@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#090a0a" />
+    <title>Coinbase for Agents</title>
+    <script>
+      try {
+        const savedTheme = localStorage.getItem("coinbase-agents-theme");
+        document.documentElement.dataset.theme = savedTheme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      } catch {
+        document.documentElement.dataset.theme = "dark";
+      }
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch color theme" title="Switch color theme">
+      <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
+      <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.3A8.5 8.5 0 0 1 8.7 4 8.5 8.5 0 1 0 20 15.3Z"/></svg>
+    </button>
+    <main>
+      <header class="voice-shell">
+        <button id="voiceButton" class="voice-button" aria-label="Start voice">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 0 0 3.5-3.5V5a3.5 3.5 0 1 0-7 0v7a3.5 3.5 0 0 0 3.5 3.5Z"/><path d="M5.5 11.5V12a6.5 6.5 0 0 0 13 0v-.5M12 18.5V22M8.5 22h7"/></svg>
+          <span class="voice-halo" aria-hidden="true">
+            <i style="--halo-angle: 0deg; --halo-index: 0"></i>
+            <i style="--halo-angle: 45deg; --halo-index: 1"></i>
+            <i style="--halo-angle: 90deg; --halo-index: 2"></i>
+            <i style="--halo-angle: 135deg; --halo-index: 3"></i>
+            <i style="--halo-angle: 180deg; --halo-index: 4"></i>
+            <i style="--halo-angle: 225deg; --halo-index: 5"></i>
+            <i style="--halo-angle: 270deg; --halo-index: 6"></i>
+            <i style="--halo-angle: 315deg; --halo-index: 7"></i>
+          </span>
+        </button>
+        <div class="voice-state"><span id="voiceButtonText">Start voice</span><span class="separator">·</span><span id="statusText">offline</span></div>
+        <div id="sessionControls" class="session-controls" hidden>
+          <button id="speakerButton" type="button">Mute agent</button>
+          <button id="endButton" type="button">End session</button>
+          <span id="queueStatus" class="queue-status" hidden></span>
+        </div>
+        <p id="setupNote" class="setup-note"></p>
+      </header>
+
+      <section id="artifacts" class="artifact-feed" aria-label="Conversation timeline" hidden></section>
+    </main>
+
+    <aside id="captions" class="captions" aria-live="polite" aria-label="Live captions" hidden></aside>
+    <audio id="agentAudio" autoplay></audio>
+
+    <template id="newsCardTemplate">
+      <article class="card news-card"><div class="card-meta"><span class="source"></span><span class="direction"></span></div><a class="headline" target="_blank" rel="noreferrer"></a><p class="summary"></p></article>
+    </template>
+    <template id="polyCardTemplate">
+      <article class="card"><p class="question"></p><div class="outcomes"></div><p class="meta poly-volume"></p></article>
+    </template>
+    <template id="reportTemplate">
+      <section class="report">
+        <header class="report-header">
+          <div><p class="report-time meta"></p><h1 class="report-asset"></h1><p class="tool-trace"></p></div>
+          <a class="standalone-link html-link" target="_blank" rel="noreferrer">Open HTML <span>↗</span></a>
+        </header>
+        <p class="report-summary"></p>
+        <div class="metrics"></div>
+        <section class="report-block">
+          <h2>News and relevant factors</h2>
+          <div class="news cards"></div>
+        </section>
+        <p class="warnings"></p>
+      </section>
+    </template>
+    <template id="tradeTemplate">
+      <section class="trade-panel">
+        <div><p class="meta">Coinbase order preview</p><h2 class="trade-title"></h2><p class="trade-details"></p></div>
+        <span class="trade-status">Waiting for confirmation</span>
+      </section>
+    </template>
+    <script type="module" src="/app.bundle.js"></script>
+  </body>
+</html>
