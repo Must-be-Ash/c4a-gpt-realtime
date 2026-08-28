@@ -131,37 +131,20 @@ h1 > span { display: block; }
 .copy-button:active { background: #e4ebf7; }
 .copy-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
-.copy-icon {
-  position: relative;
-  z-index: 1;
-  width: 12px;
-  height: 12px;
-  border: 1.5px solid currentColor;
-  border-radius: 2px;
+.copy-icon,
+.check-icon {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
 }
 
-.copy-icon::before {
-  position: absolute;
-  right: 3px;
-  bottom: 3px;
-  width: 100%;
-  height: 100%;
-  border: 1.5px solid currentColor;
-  border-radius: 2px;
-  content: "";
-}
-
-.copy-button.copied .copy-icon {
-  width: 13px;
-  height: 7px;
-  border: 0;
-  border-bottom: 2px solid currentColor;
-  border-left: 2px solid currentColor;
-  border-radius: 0;
-  transform: rotate(-45deg) translateY(-1px);
-}
-
-.copy-button.copied .copy-icon::before { display: none; }
+.check-icon { display: none; }
+.copy-button.copied .copy-icon { display: none; }
+.copy-button.copied .check-icon { display: block; }
 
 .sr-only {
   position: absolute;
