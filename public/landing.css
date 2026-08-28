@@ -78,6 +78,8 @@ h1 {
 
 h1 > span { display: block; }
 
+.hero-accent { color: var(--accent); }
+
 .dek {
   max-width: 680px;
   margin: 28px 0 0;
@@ -215,6 +217,10 @@ h1 > span { display: block; }
   .prompt-card { grid-template-columns: 1fr; padding: 12px; }
   .prompt-card code { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
   .copy-button { width: 42px; justify-self: end; }
+}
+
+@media (min-width: 900px) {
+  .hero-accent { white-space: nowrap; }
 }
 
 @media (prefers-reduced-motion: reduce) {

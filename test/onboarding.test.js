@@ -14,6 +14,7 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.match(page, /Coinbase for Agents Demo/);
   assert.match(page, /Paste this into Codex, Claude Code, Cursor/);
   assert.match(page, /Markets move fast\./);
+  assert.match(page, /class="hero-accent">Your research should too\.<\/span>/);
   assert.match(page, /Voice-first agent that helps you research and make better informed trades at the speed of thought/);
   assert.doesNotMatch(page, /—|–/);
   assert.doesNotMatch(page, /Your market|voice-first crypto research/);
@@ -25,6 +26,8 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.match(styles, /\.copy-button[\s\S]{0,500}border-radius:\s*50%/);
   assert.match(styles, /linear-gradient\(180deg, #b7bec8 0%, #d9dde3 100%\)/);
   assert.match(styles, /radial-gradient\(circle at 46% 28%, #ffffff 0%, #f0f1f3 42%, #d9dde2 74%, #c8cdd4 100%\)/);
+  assert.match(styles, /\.hero-accent\s*{\s*color:\s*var\(--accent\)/);
+  assert.match(styles, /@media \(min-width: 900px\)[\s\S]*\.hero-accent\s*{\s*white-space:\s*nowrap/);
 });
 
 test("setup skill is published from the repository source", async () => {
