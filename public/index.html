@@ -18,7 +18,7 @@
   <body>
     <div class="page-shell">
       <header class="masthead">
-        <a class="wordmark" href="/">Coinbase for Agents</a>
+        <a class="wordmark" href="/">Coinbase for Agents Demo</a>
         <a class="github-link" href="https://github.com/Must-be-Ash/c4a-gpt-realtime" target="_blank" rel="noreferrer">
           GitHub <span aria-hidden="true">↗</span>
         </a>
@@ -37,7 +37,8 @@
             <div class="prompt-card">
               <code id="setupPrompt">Read https://coinbase-for-agents.vercel.app/skill and help me set up my own Coinbase for Agents.</code>
               <button id="copyPrompt" class="copy-button" type="button" aria-label="Copy setup prompt">
-                <span class="copy-label">Copy</span>
+                <span class="copy-icon" aria-hidden="true"></span>
+                <span class="copy-label sr-only">Copy</span>
               </button>
             </div>
             <p id="prompt-label">Paste this into Codex, Claude Code, Cursor, or your coding agent.</p>
@@ -45,9 +46,6 @@
         </section>
       </main>
 
-      <footer>
-        <p>MIT licensed</p>
-      </footer>
     </div>
     <script src="/landing.js"></script>
   </body>
