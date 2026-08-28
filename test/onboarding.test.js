@@ -14,17 +14,17 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.match(page, /Coinbase for Agents Demo/);
   assert.match(page, /Paste this into Codex, Claude Code, Cursor/);
   assert.match(page, /Markets move fast\./);
-  assert.match(page, /live, source-backed research in seconds/i);
-  assert.match(page, /stocks, crypto, and futures/i);
-  assert.match(page, /x402/);
-  assert.match(page, /custom reports/);
+  assert.match(page, /Voice-first agent that helps you research and make better informed trades at the speed of thought/);
+  assert.doesNotMatch(page, /—|–/);
   assert.doesNotMatch(page, /Your market|voice-first crypto research/);
   assert.doesNotMatch(page, /MIT licensed|<footer/);
   assert.doesNotMatch(page, /class="(?:mark|status-dot|capabilities|how-it-works|hero-links)"/);
   assert.equal((page.match(/Must-be-Ash\/c4a-gpt-realtime/g) ?? []).length, 1);
   assert.match(script, /new URL\("\/skill", window\.location\.origin\)/);
   assert.match(script, /navigator\.clipboard\.writeText\(prompt\)/);
-  assert.doesNotMatch(styles, /\.copy-button[\s\S]{0,500}border-radius:\s*50%/);
+  assert.match(styles, /\.copy-button[\s\S]{0,500}border-radius:\s*50%/);
+  assert.match(styles, /linear-gradient\(180deg, #b7bec8 0%, #d9dde3 100%\)/);
+  assert.match(styles, /radial-gradient\(circle at 46% 28%, #ffffff 0%, #f0f1f3 42%, #d9dde2 74%, #c8cdd4 100%\)/);
 });
 
 test("setup skill is published from the repository source", async () => {
