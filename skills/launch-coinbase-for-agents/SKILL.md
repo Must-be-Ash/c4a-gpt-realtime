@@ -1,6 +1,6 @@
 ---
 name: launch-coinbase-for-agents
-description: Fork, install, configure, verify, and run the Coinbase for Agents voice-first crypto research and trading app locally. Use when someone asks to launch their own copy, set up its OpenAI or Exa keys, connect Coinbase, or troubleshoot first-run setup.
+description: Fork, install, configure, verify, and run the Coinbase for Agents low-latency voice research and trading app locally. Use when someone asks to launch their own copy, set up its OpenAI or Exa keys, connect Coinbase equities, crypto, or futures, or troubleshoot first-run setup.
 metadata:
   source: "https://github.com/Must-be-Ash/c4a-gpt-realtime"
 ---
@@ -33,8 +33,8 @@ Determine:
 2. The GitHub account or organization for the fork, if applicable.
 3. The parent directory for the checkout. Default the folder name to `c4a-gpt-realtime`.
 4. The initial capability profile:
-   - **Research:** OpenAI + Exa. This is enough for voice, live public market data, current news, charts, prediction markets, derivatives, and catalysts.
-   - **Trading:** Research plus Coinbase credentials. This adds balances, risk views, order previews, and confirmed order execution.
+   - **Research:** OpenAI + Exa. This is enough for responsive voice, live web research on any topic, public crypto market data, charts, prediction markets, derivatives, catalysts, and generated reports.
+   - **Trading:** Research plus Coinbase credentials. This adds supported S&P 500 equities, spot crypto, US futures, balances, risk views, order previews, and confirmed order execution.
    - **Paid data:** Either profile plus AgentCash and optional Nansen/Orthogonal configuration.
 
 Ask for account choices and readiness only, never credential values. Explain that local setup will create a checkout, install npm packages, and write an ignored `.env` file.
@@ -80,6 +80,8 @@ Run:
     npm install
     npm run check
 
+`npm install` also installs the pinned Coinbase for Agents CLI as a local project dependency. Do not install or prefer a global copy; the app deliberately launches its tested local version.
+
 Do not continue past a failing clean-checkout test suite. Diagnose dependency, Node version, or platform errors and explain any upstream code failure clearly.
 
 Create the local environment file only if it does not already exist:
@@ -109,16 +111,15 @@ Leave the default model and voice values unchanged unless the app reports that t
 
 Skip this stage when the user chose the research profile. Tell them they can return later without reinstalling the app.
 
-Install the official CLI:
+Verify the pinned official CLI installed with the project:
 
-    npm install --global @coinbase/coinbase-cli
-    coinbase --version
+    npm exec -- coinbase --version
 
 Have the user create a Secret API key in Coinbase's CDP portal:
 
 https://portal.cdp.coinbase.com/api-keys/secret
 
-Recommend a dedicated, minimally funded Advanced Trade spot portfolio. Guide the user to enable only the permissions needed for their intended use. `View` is needed for balances; `Trade` is needed for order previews and execution. Do not recommend transfer, receive, policy-management, or private-key-export permissions for this app's normal trade flow.
+Recommend a dedicated, minimally funded Advanced Trade portfolio. Guide the user to enable only the permissions needed for their intended use. `View` is needed for balances and product discovery; `Trade` is needed for equity, crypto, or futures order previews and execution. Do not recommend transfer, receive, policy-management, or private-key-export permissions for this app's normal trade flow. Futures also require Coinbase account eligibility.
 
 Have the user put `COINBASE_KEY_ID` and `COINBASE_KEY_SECRET` directly into `.env`. Preserve multiline key formatting exactly. Do not pass either value through `coinbase env ...` command arguments because that can enter shell history.
 
@@ -160,6 +161,8 @@ Then test current news if Exa is configured:
     What is the most important Bitcoin news today?
 
 If Coinbase is configured and the user wants to verify it, use a read-only balance request. Do not preview or execute an order during setup.
+
+Optionally verify the expanded product catalog with a read-only request such as “Find the Coinbase product for Apple stock” or “List the current Coinbase futures contracts.” Explain that Coinbase's ticker, candle, order-book, and best-bid/ask endpoints are not currently available for equities, while product discovery and guarded equity ordering are supported.
 
 ## 9. Finish cleanly
 

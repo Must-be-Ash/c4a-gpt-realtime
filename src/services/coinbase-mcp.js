@@ -1,8 +1,31 @@
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
+import { coinbaseCommand } from "./coinbase-command.js";
+
 const X402_TOOL = /^coinbase_x402(?:_|$)/;
 const X402_HELPERS = new Set(["coinbase_help", "coinbase_template"]);
+const READ_ONLY_TOOLS = new Set([
+  "coinbase_env",
+  "coinbase_template",
+  "coinbase_help",
+  "coinbase_convert_quote",
+  "coinbase_convert_get",
+  "coinbase_orders_list",
+  "coinbase_orders_preview",
+  "coinbase_orders_get",
+  "coinbase_orders_fills",
+  "coinbase_portfolios_list",
+  "coinbase_portfolios_get",
+  "coinbase_products_list",
+  "coinbase_products_get",
+  "coinbase_products_ticker",
+  "coinbase_products_book",
+  "coinbase_products_candles",
+  "coinbase_products_best_bid_ask",
+  "coinbase_balance",
+  "coinbase_fees",
+]);
 
 const containsX402 = (value) => {
   if (typeof value === "string") return /(^|[^a-z0-9])x402([^a-z0-9]|$)/i.test(value);
@@ -17,8 +40,8 @@ const isBlockedX402Call = (name, argumentsValue = {}) =>
 async function createDefaultClient({ env }) {
   const client = new Client({ name: "coinbase-for-agents-demo", version: "0.1.0" });
   const transport = new StdioClientTransport({
-    command: "coinbase",
-    args: ["mcp"],
+    command: coinbaseCommand.command,
+    args: [...coinbaseCommand.args, "mcp"],
     env: {
       ...env,
       COINBASE_ENV: env.COINBASE_ENV || "live",
@@ -51,7 +74,7 @@ export function createCoinbaseMcpClient({
     if (toolsCache) return toolsCache;
     const client = await getClient();
     const result = await client.listTools();
-    toolsCache = (result.tools || []).filter(({ name }) => !X402_TOOL.test(name));
+    toolsCache = (result.tools || []).filter(({ name }) => READ_ONLY_TOOLS.has(name));
     return toolsCache;
   };
 
@@ -61,6 +84,9 @@ export function createCoinbaseMcpClient({
     async callTool(name, argumentsValue = {}) {
       if (isBlockedX402Call(name, argumentsValue)) {
         throw new Error("Coinbase x402 tools are not exposed. Use the dedicated x402 tool instead.");
+      }
+      if (!READ_ONLY_TOOLS.has(name)) {
+        throw new Error("Only read-only Coinbase tools are exposed. Use preview_order and execute_order for trades.");
       }
       const tools = await getTools();
       if (!tools.some((item) => item.name === name)) throw new Error(`Unknown Coinbase tool: ${name}`);

@@ -17,21 +17,114 @@ test("normalizes a market buy into an explicit quote-sized order", () => {
   );
 });
 
-test("accepts any syntactically valid USD crypto product", () => {
+test("accepts Coinbase spot and equity products quoted in USD or USDC", () => {
   assert.equal(
     normalizeMarketOrder({ productId: "sol-usd", side: "buy", quoteSize: "5" }).productId,
     "SOL-USD",
   );
+  assert.equal(
+    normalizeMarketOrder({ productId: "aapl-usdc", side: "buy", quoteSize: "25" }).productId,
+    "AAPL-USDC",
+  );
   assert.throws(
     () => normalizeMarketOrder({ productId: "not a market", side: "BUY", quoteSize: "5" }),
-    /USD product/,
+    /Coinbase product/,
   );
+});
+
+test("supports base-sized futures buys and rejects quote-sized futures orders", () => {
+  assert.deepEqual(
+    normalizeMarketOrder({ productId: "bit-28aug26-cde", side: "buy", baseSize: "1" }),
+    { productId: "BIT-28AUG26-CDE", side: "BUY", type: "market", baseSize: "1" },
+  );
+  assert.throws(
+    () => normalizeMarketOrder({ productId: "BIT-28AUG26-CDE", side: "BUY", quoteSize: "100" }),
+    /Futures.*baseSize/i,
+  );
+});
+
+test("rejects quote-denominated priced futures before product conversion", async () => {
+  await assert.rejects(
+    prepareOrderForPreview({
+      productId: "BIT-28AUG26-CDE",
+      side: "BUY",
+      type: "limit",
+      quoteSize: "100",
+      limitPrice: "65000",
+    }, { getProduct: async () => ({ base_increment: "1", quote_increment: "1" }) }),
+    /Futures.*baseSize/i,
+  );
+});
+
+test("builds documented whole-share extended-hours equity limit orders", () => {
+  const order = normalizeMarketOrder({
+    productId: "AAPL-USD",
+    side: "BUY",
+    type: "limit",
+    baseSize: "2",
+    limitPrice: "225",
+    equityTradingSession: "AFTER_HOURS",
+  });
+
+  assert.deepEqual(buildOrderArgs("preview", order), [
+    "orders", "preview", "product_id=AAPL-USD", "side=BUY", "type=limit",
+    "base_size=2", "limit_price=225", "time_in_force=GTC",
+    "equity_trading_session=AFTER_HOURS",
+  ]);
+  assert.throws(
+    () => normalizeMarketOrder({
+      productId: "AAPL-USD",
+      side: "BUY",
+      type: "limit",
+      baseSize: "0.5",
+      limitPrice: "225",
+      equityTradingSession: "OVERNIGHT",
+    }),
+    /whole-share/i,
+  );
+  assert.throws(
+    () => normalizeMarketOrder({
+      productId: "AAPL-USD",
+      side: "BUY",
+      type: "market",
+      quoteSize: "100",
+      equityTradingSession: "PRE_MARKET",
+    }),
+    /limit orders/i,
+  );
+  assert.throws(
+    () => normalizeMarketOrder({
+      productId: "AAPL-USD",
+      side: "BUY",
+      type: "limit",
+      quoteSize: "225",
+      limitPrice: "225",
+      equityTradingSession: "AFTER_HOURS",
+    }),
+    /baseSize|quoteSize/i,
+  );
+});
+
+test("rejects fractional extended-hours sizing before product quantization", async () => {
+  let productLookups = 0;
+  await assert.rejects(
+    prepareOrderForPreview({
+      productId: "AAPL-USD",
+      side: "BUY",
+      type: "limit",
+      baseSize: "2.7",
+      limitPrice: "225",
+      equityTradingSession: "OVERNIGHT",
+    }, { getProduct: async () => { productLookups += 1; } }),
+    /whole-share baseSize/i,
+  );
+  assert.equal(productLookups, 0);
 });
 
 test("rejects mutually exclusive or missing sizes", () => {
   assert.throws(
     () => normalizeMarketOrder({ productId: "BTC-USD", side: "BUY", quoteSize: 10, baseSize: 1 }),
-    /quoteSize only/,
+    /exactly one/,
   );
   assert.throws(
     () => normalizeMarketOrder({ productId: "BTC-USD", side: "SELL" }),
@@ -233,5 +326,16 @@ test("describes the exact balance relevant to an insufficient-funds order", () =
   assert.equal(
     describeInsufficientFunds({ productId: "HYPE-USD", side: "SELL", baseSize: "1" }, balances),
     "Coinbase rejected the HYPE-USD SELL preview for insufficient funds. Available HYPE: 0.086.",
+  );
+});
+
+test("reports the actual quote-currency balance for a USDC equity buy", () => {
+  const balances = {
+    accounts: [{ currency: "USDC", available_balance: { value: "120.00" } }],
+  };
+
+  assert.equal(
+    describeInsufficientFunds({ productId: "AAPL-USDC", side: "BUY", quoteSize: "150" }, balances),
+    "Coinbase rejected the AAPL-USDC BUY preview for insufficient funds. Available USDC: 120.00.",
   );
 });

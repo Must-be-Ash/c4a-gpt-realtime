@@ -702,20 +702,27 @@ function renderPreview(payload) {
   const tradeDetails = panel.querySelector(".trade-details");
   const tradeStatus = panel.querySelector(".trade-status");
   const order = payload.order;
+  const quoteCurrency = order.productId.split("-").at(-1);
+  const isFutures = order.productId.endsWith("-CDE");
   const amount = payload.requestedQuoteSize != null
-    ? `$${payload.requestedQuoteSize}`
+    ? `${payload.requestedQuoteSize} ${quoteCurrency}`
     : order.quoteSize != null
-      ? `$${order.quoteSize}`
-      : `${order.baseSize} ${order.productId.split("-")[0]}`;
+      ? `${order.quoteSize} ${quoteCurrency}`
+      : isFutures
+        ? `${order.baseSize} contracts`
+        : `${order.baseSize} ${order.productId.split("-")[0]}`;
   const type = order.type === "stop_limit" ? "STOP LIMIT" : order.type.toUpperCase();
   tradeTitle.textContent = `${order.side} ${amount} of ${order.productId} · ${type}`;
   const estimate = payload.preview.est_average_filled_price || payload.preview.average_filled_price;
   const fee = payload.preview.commission_total;
+  const liquidationPrice = payload.preview.predicted_liquidation_price;
   tradeDetails.textContent = [
     order.limitPrice && `limit $${order.limitPrice}`,
     order.stopPrice && `stop $${order.stopPrice} ${order.stopDirection}`,
+    order.equityTradingSession && `session ${order.equityTradingSession.replaceAll("_", " ").toLowerCase()}`,
     estimate && `estimated fill $${estimate}`,
     fee && `fee $${fee}`,
+    liquidationPrice && `estimated liquidation $${liquidationPrice}`,
     `expires ${new Date(payload.expiresAt).toLocaleTimeString()}`,
   ].filter(Boolean).join(" · ");
   activeTradeEntry = { panel, status: tradeStatus };
@@ -732,8 +739,13 @@ function renderExecution(payload) {
 }
 
 const productIdSchema = z.string()
-  .regex(/^[A-Z0-9][A-Z0-9-]{0,23}-USD$/)
-  .describe("Coinbase USD product ID, for example SOL-USD");
+  .regex(/^[A-Z0-9]+(?:-[A-Z0-9]+)+$/)
+  .max(64)
+  .describe("Exact Coinbase product ID discovered with coinbase_products_list or coinbase_products_get, for example AAPL-USD, BTC-USDC, or BIT-28AUG26-CDE");
+const cryptoProductIdSchema = z.string()
+  .regex(/^[A-Z0-9]{2,15}-(?:USD|USDC)$/)
+  .refine((productId) => !productId.endsWith("-CDE"), "Use a spot crypto product ID, not an equity or futures product")
+  .describe("Coinbase spot crypto product ID such as BTC-USD or SOL-USDC; equities and futures are not supported by this crypto-specific tool");
 const newsFocusSchema = z.string().min(3).max(500)
   .describe("Focused news query. Preserve every user-provided entity, name, date, and topic instead of reducing it to only the asset symbol.");
 const newsTimeframeSchema = z.enum(["today", "yesterday", "today_and_yesterday", "last_7_days", "last_30_days"])
@@ -748,7 +760,7 @@ const newsRequestBody = ({ productId, focusQuery, timeframe }) => ({
 const researchTool = tool({
   name: "research_crypto",
   description: "Combined Coinbase market/volume and Exa news research. Use only when the user asks for both market context and news. Preserve every user-provided entity, name, date, and topic in focusQuery. For a news-only request, do not call research_crypto; call search_crypto_news.",
-  parameters: z.object({ productId: productIdSchema, focusQuery: newsFocusSchema, timeframe: newsTimeframeSchema }),
+  parameters: z.object({ productId: cryptoProductIdSchema, focusQuery: newsFocusSchema, timeframe: newsTimeframeSchema }),
   execute: async ({ productId, focusQuery, timeframe }) => {
     setStatus("researching", true);
     try {
@@ -764,7 +776,7 @@ const researchTool = tool({
 const cryptoNewsTool = tool({
   name: "search_crypto_news",
   description: "Focused news-only Exa search that does not fetch Coinbase market data. Crypto news must use search_crypto_news instead of the paid-data router. Preserve every user-provided entity, name, date, and topic in focusQuery. Use this whenever the user asks only for news, an event, a claim, or why something happened; do not call research_crypto unless they also request market or volume data.",
-  parameters: z.object({ productId: productIdSchema, focusQuery: newsFocusSchema, timeframe: newsTimeframeSchema }),
+  parameters: z.object({ productId: cryptoProductIdSchema, focusQuery: newsFocusSchema, timeframe: newsTimeframeSchema }),
   execute: async ({ productId, focusQuery, timeframe }) => {
     setStatus("researching", true);
     try {
@@ -780,7 +792,7 @@ const cryptoNewsTool = tool({
 const polymarketTool = tool({
   name: "show_polymarket",
   description: "Polymarket-only lookup for a crypto asset. Use this when the user asks specifically for Polymarket markets, probabilities, odds, or sentiment. It calls the live Polymarket API and shows only those results; do not call or fetch research_crypto unless the user also asks for news, volume, or broader research.",
-  parameters: z.object({ productId: productIdSchema }),
+  parameters: z.object({ productId: cryptoProductIdSchema }),
   execute: async ({ productId }) => JSON.stringify({
     queued: true,
     ...queueArtifact({
@@ -798,7 +810,7 @@ const polymarketTool = tool({
 const candleChartTool = tool({
   name: "show_candle_chart",
   description: "Add an interactive Coinbase candlestick chart for any USD crypto product using the latest 30 daily OHLCV candles. Hover or use arrow keys for exact values.",
-  parameters: z.object({ productId: productIdSchema }),
+  parameters: z.object({ productId: cryptoProductIdSchema }),
   execute: async ({ productId }) => JSON.stringify({
     queued: true,
     ...queueArtifact({
@@ -814,7 +826,7 @@ const candleChartTool = tool({
 const orderBookTool = tool({
   name: "show_order_book_depth",
   description: "Queue a fresh Coinbase cumulative bid and ask order-book depth artifact for any USD crypto product. It appends without replacing earlier artifacts.",
-  parameters: z.object({ productId: productIdSchema }),
+  parameters: z.object({ productId: cryptoProductIdSchema }),
   execute: async ({ productId }) => JSON.stringify({
     queued: true,
     ...queueArtifact({
@@ -869,7 +881,7 @@ const smartMoneyTool = tool({
 const derivativesPositioningTool = tool({
   name: "show_derivatives_positioning",
   description: "Show live perpetual-market positioning for a crypto asset: mark price, funding, open interest, 24h volume, premium/crowding, seven-day funding history, and—when Nansen returns it—observed long/short positioning and positions nearest liquidation. Use only when the user asks about derivatives, perps, funding, open interest, crowding, long/short market positioning, or liquidation risk. Do not call news, Polymarket, or broader research tools unless separately requested.",
-  parameters: z.object({ productId: productIdSchema }),
+  parameters: z.object({ productId: cryptoProductIdSchema }),
   execute: async ({ productId }) => JSON.stringify({
     queued: true,
     ...queueGenericArtifact({
@@ -903,7 +915,7 @@ const tradeImpactTool = tool({
   name: "show_trade_impact",
   description: "Estimate market-order execution quality from the live Coinbase order book and account fee tier. Shows expected average price, price impact, displayed liquidity, and fees across several USD order sizes. This is analysis only and never previews or places an order. Use when the user asks about slippage, market impact, liquidity cost, market versus limit execution, or how an order size may fill.",
   parameters: z.object({
-    productId: productIdSchema,
+    productId: cryptoProductIdSchema,
     quoteSize: z.number().positive().max(1_000_000).describe("USD notional the user wants to evaluate"),
   }),
   execute: async ({ productId, quoteSize }) => JSON.stringify({
@@ -923,7 +935,7 @@ const onchainFlowTool = tool({
   name: "show_onchain_flows",
   description: "Show real Nansen on-chain token flows: buy/sell volume, net trading flow, liquidity, and—when available—exchange, Smart Money, whale, fresh-wallet, and top-PnL-holder flows. The server dynamically resolves the token representation; provide chain and tokenAddress only when the user supplies them or an exact contract is important. Use only for on-chain flows, exchange inflows/outflows, whale accumulation/distribution, or holder-segment movement.",
   parameters: z.object({
-    productId: productIdSchema,
+    productId: cryptoProductIdSchema,
     chain: z.string().max(40).nullable().describe("Nansen chain slug or null to resolve dynamically"),
     tokenAddress: z.string().max(100).nullable().describe("Exact token contract/address or null to resolve dynamically"),
   }),
@@ -944,7 +956,7 @@ const catalystCalendarTool = tool({
   name: "show_catalyst_calendar",
   description: "Search current sources and show a source-linked calendar of explicitly dated upcoming crypto catalysts such as token unlocks, governance votes, upgrades, launches, listings, regulatory deadlines, CPI, and FOMC events. Use only when the user asks for upcoming catalysts, events, deadlines, unlocks, or a calendar. Do not add news or Polymarket artifacts unless separately requested.",
   parameters: z.object({
-    productId: productIdSchema,
+    productId: cryptoProductIdSchema,
     horizonDays: z.number().int().min(7).max(180).describe("Calendar horizon in days; use 90 when the user does not specify"),
   }),
   execute: async ({ productId, horizonDays }) => JSON.stringify({
@@ -1147,25 +1159,28 @@ function loadCoinbaseTools() {
 
 const previewOrderTool = tool({
   name: "preview_order",
-  description: "Get a real Coinbase preview for a market, limit, or stop-limit order, then ask for explicit confirmation. Every BUY amount is dollars and every SELL amount is base-asset units. The server converts priced BUY amounts and quantizes them to Coinbase's live base increment; do not calculate or convert a BUY to base size yourself. Limit and stop-limit orders require limitPrice. Stop-limit also requires stopPrice and stopDirection.",
+  description: "Get a real Coinbase preview for a spot, equity, or futures market, limit, or stop-limit order, then ask for explicit confirmation. Set amountType to quote for a quote-currency amount or base for shares, contracts, or base-asset units. Futures always use base. The server converts priced quote amounts and quantizes them to Coinbase's live increment; do not calculate or convert a quote amount to base size yourself. Extended-hours equities require a whole-share limit order and equityTradingSession.",
   parameters: z.object({
     productId: productIdSchema,
     side: z.enum(["BUY", "SELL"]),
     type: z.enum(["market", "limit", "stop_limit"]),
-    amount: z.number().positive().describe("USD for every BUY; base-asset units for every SELL"),
+    amount: z.number().positive().describe("Amount in the unit selected by amountType"),
+    amountType: z.enum(["quote", "base"]).describe("quote for dollars/USDC; base for shares, futures contracts, or base-asset units"),
     limitPrice: z.number().positive().nullable(),
     stopPrice: z.number().positive().nullable(),
     stopDirection: z.enum(["up", "down"]).nullable(),
+    equityTradingSession: z.enum(["PRE_MARKET", "AFTER_HOURS", "OVERNIGHT", "MULTI_SESSION"]).nullable(),
   }),
-  execute: async ({ productId, side, type, amount, limitPrice, stopPrice, stopDirection }) => {
+  execute: async ({ productId, side, type, amount, amountType, limitPrice, stopPrice, stopDirection, equityTradingSession }) => {
     const order = {
       productId,
       side,
       type,
-      ...(side === "BUY" ? { quoteSize: String(amount) } : { baseSize: String(amount) }),
+      ...(amountType === "quote" ? { quoteSize: String(amount) } : { baseSize: String(amount) }),
       ...(limitPrice == null ? {} : { limitPrice: String(limitPrice) }),
       ...(stopPrice == null ? {} : { stopPrice: String(stopPrice) }),
       ...(stopDirection == null ? {} : { stopDirection }),
+      ...(equityTradingSession == null ? {} : { equityTradingSession }),
     };
     const payload = await requestJson("/api/orders/preview", { method: "POST", body: JSON.stringify(order) });
     renderPreview(payload);
@@ -1201,7 +1216,7 @@ async function startSession() {
     ]);
     const orthogonalCatalogTool = loadOrthogonalCatalogTool(agentCashTool);
     const agent = new RealtimeAgent({
-      name: "Crypto prototype",
+      name: "Coinbase for Agents",
       instructions: appConfig.agentInstructions,
       tools: [
         researchTool,

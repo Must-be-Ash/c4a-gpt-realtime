@@ -1,7 +1,11 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 
-const USD_PRODUCT = /^[A-Z0-9][A-Z0-9-]{0,23}-USD$/;
+import { coinbaseCommand } from "./coinbase-command.js";
+
+const COINBASE_PRODUCT = /^[A-Z0-9]+(?:-[A-Z0-9]+)+$/;
+const FUTURES_PRODUCT = /-CDE$/;
+const EQUITY_TRADING_SESSIONS = new Set(["PRE_MARKET", "AFTER_HOURS", "OVERNIGHT", "MULTI_SESSION"]);
 
 const positiveDecimal = (value, label) => {
   const text = String(value ?? "").trim();
@@ -66,24 +70,54 @@ export function normalizeMarketOrder(input) {
   const productId = String(input.productId ?? "").toUpperCase();
   const side = String(input.side ?? "").toUpperCase();
   const type = String(input.type ?? "market").toLowerCase();
-  if (!USD_PRODUCT.test(productId)) throw new Error("productId must be a valid USD product such as SOL-USD.");
+  if (productId.length > 64 || !COINBASE_PRODUCT.test(productId)) {
+    throw new Error("productId must be a valid Coinbase product such as AAPL-USD or BIT-28AUG26-CDE.");
+  }
   if (!new Set(["BUY", "SELL"]).has(side)) throw new Error("side must be BUY or SELL.");
   if (!new Set(["market", "limit", "stop_limit"]).has(type)) {
     throw new Error("type must be market, limit, or stop_limit.");
   }
 
-  const order = { productId, side, type };
-  if (type === "market" && side === "BUY") {
-    if (input.baseSize != null) throw new Error("Market buys use quoteSize only.");
-    order.quoteSize = positiveDecimal(input.quoteSize, "quoteSize");
-  } else {
-    if (input.quoteSize != null) throw new Error("This order uses baseSize only.");
-    order.baseSize = positiveDecimal(input.baseSize, "baseSize");
+  const hasQuoteSize = input.quoteSize != null;
+  const hasBaseSize = input.baseSize != null;
+  if (hasQuoteSize === hasBaseSize) throw new Error("Provide exactly one of quoteSize or baseSize.");
+  if (hasQuoteSize && (type !== "market" || side !== "BUY")) {
+    throw new Error("This order uses baseSize only; quoteSize is supported only for market BUY orders.");
+  }
+  if (FUTURES_PRODUCT.test(productId) && hasQuoteSize) {
+    throw new Error("Futures orders must use baseSize in contracts, including market BUY orders.");
   }
 
-  if (type === "market") return order;
+  const order = { productId, side, type };
+  if (hasQuoteSize) order.quoteSize = positiveDecimal(input.quoteSize, "quoteSize");
+  if (hasBaseSize) order.baseSize = positiveDecimal(input.baseSize, "baseSize");
+
+  if (type === "market") {
+    if (input.equityTradingSession != null) {
+      throw new Error("Extended-hours equity sessions accept limit orders only.");
+    }
+    return order;
+  }
   order.limitPrice = positiveDecimal(input.limitPrice, "limitPrice");
-  if (type === "limit") return order;
+  if (type === "limit") {
+    const equityTradingSession = input.equityTradingSession == null
+      ? null
+      : String(input.equityTradingSession).toUpperCase();
+    if (equityTradingSession != null) {
+      if (!EQUITY_TRADING_SESSIONS.has(equityTradingSession)) {
+        throw new Error("equityTradingSession must be PRE_MARKET, AFTER_HOURS, OVERNIGHT, or MULTI_SESSION.");
+      }
+      if (!/^\d+(?:\.0+)?$/.test(order.baseSize)) {
+        throw new Error("Extended-hours equity sessions accept whole-share limit orders only.");
+      }
+      order.equityTradingSession = equityTradingSession;
+    }
+    return order;
+  }
+
+  if (input.equityTradingSession != null) {
+    throw new Error("Extended-hours equity sessions accept limit orders only.");
+  }
 
   order.stopPrice = positiveDecimal(input.stopPrice, "stopPrice");
   order.stopDirection = String(input.stopDirection ?? "").toLowerCase();
@@ -95,6 +129,16 @@ export function normalizeMarketOrder(input) {
 
 export async function prepareOrderForPreview(input, { getProduct }) {
   const type = String(input.type ?? "market").toLowerCase();
+  const productId = String(input.productId ?? "").toUpperCase();
+  if (FUTURES_PRODUCT.test(productId) && input.quoteSize != null) {
+    throw new Error("Futures orders must use baseSize in contracts, including priced BUY orders.");
+  }
+  if (input.equityTradingSession != null && input.quoteSize != null) {
+    throw new Error("Extended-hours equity sessions use baseSize for whole shares; quoteSize is not supported.");
+  }
+  if (input.equityTradingSession != null && !/^\d+(?:\.0+)?$/.test(String(input.baseSize ?? ""))) {
+    throw new Error("Extended-hours equity sessions require an explicit whole-share baseSize.");
+  }
   if (type === "market") {
     const order = normalizeMarketOrder(input);
     return {
@@ -104,7 +148,6 @@ export async function prepareOrderForPreview(input, { getProduct }) {
     };
   }
 
-  const productId = String(input.productId ?? "").toUpperCase();
   const product = await getProduct(productId);
   const baseIncrement = positiveDecimal(product?.base_increment, "Coinbase base_increment");
   const quoteIncrement = positiveDecimal(product?.quote_increment, "Coinbase quote_increment");
@@ -145,6 +188,9 @@ export function buildOrderArgs(action, order, clientOrderId) {
       args.push(`stop_price=${order.stopPrice}`, `stop_direction=${order.stopDirection}`);
     }
     args.push("time_in_force=GTC");
+    if (order.equityTradingSession) {
+      args.push(`equity_trading_session=${order.equityTradingSession}`);
+    }
   }
   if (action === "create") {
     if (!clientOrderId) throw new Error("clientOrderId is required to create an order.");
@@ -161,7 +207,9 @@ export function findAvailableBalance(payload, currency) {
 }
 
 export function describeInsufficientFunds(order, balances) {
-  const currency = order.side === "BUY" ? "USD" : order.productId.replace(/-USD$/, "");
+  const parts = String(order.productId).split("-");
+  const quoteCurrency = ["USD", "USDC"].includes(parts.at(-1)) ? parts.at(-1) : "USD";
+  const currency = order.side === "BUY" ? quoteCurrency : parts[0];
   const available = findAvailableBalance(balances, currency);
   const suffix = available == null ? "" : ` Available ${currency}: ${available}.`;
   return `Coinbase rejected the ${order.productId} ${order.side} preview for insufficient funds.${suffix}`;
@@ -169,7 +217,7 @@ export function describeInsufficientFunds(order, balances) {
 
 const runCoinbase = (args, { env = process.env, timeoutMs = 30_000 } = {}) =>
   new Promise((resolve, reject) => {
-    const child = spawn("coinbase", args, {
+    const child = spawn(coinbaseCommand.command, [...coinbaseCommand.args, ...args], {
       env: { ...env, COINBASE_ENV: env.COINBASE_ENV || "live", COINBASE_NO_HISTORY: "1" },
       shell: false,
       stdio: ["ignore", "pipe", "pipe"],

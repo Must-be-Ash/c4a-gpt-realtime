@@ -584,8 +584,8 @@ app.post("/api/orders/preview", asyncRoute(async (request, response) => {
     side: requestedOrder.side,
     amount: requestedQuoteSize ?? requestedOrder.quoteSize ?? requestedOrder.baseSize,
     amountCurrency: requestedQuoteSize != null || requestedOrder.quoteSize != null
-      ? "USD"
-      : requestedOrder.productId.replace(/-USD$/, ""),
+      ? requestedOrder.productId.split("-").at(-1)
+      : requestedOrder.productId.endsWith("-CDE") ? "contracts" : requestedOrder.productId.split("-")[0],
     baseSize: requestedOrder.baseSize ?? null,
     baseIncrement,
   });
@@ -645,7 +645,7 @@ app.use((error, request, response, _next) => {
 });
 
 const server = app.listen(config.port, () => {
-  console.log(`Voice crypto demo: http://localhost:${config.port}`);
+  console.log(`Voice market demo: http://localhost:${config.port}`);
   console.log(`Runtime log: ${runtimeLogPath}`);
 });
 

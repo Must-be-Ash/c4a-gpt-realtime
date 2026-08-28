@@ -1,6 +1,6 @@
 # Coinbase for Agents
 
-Your own voice-first crypto research and trading agent. It uses OpenAI Realtime for conversation, Coinbase for live market data and guarded trading, Exa for current news, Polymarket for market sentiment, and AgentCash for optional paid data.
+Your own low-latency voice research and trading agent. It uses OpenAI Realtime for responsive conversation, Coinbase for equities, crypto, US futures, portfolio data, and guarded trading, Exa for live web research, and AgentCash for optional paid data and custom artifacts.
 
 ## Get started with your coding agent
 
@@ -24,10 +24,10 @@ All research, market data, balances, previews, and orders use live providers. Th
 - A browser with microphone access
 - An OpenAI API key
 - An Exa API key for news research
-- The Coinbase for Agents CLI for balances and trading:
+- Coinbase credentials for balances and trading. The current Coinbase for Agents CLI is pinned as a local project dependency and installed by `npm install`—no global CLI install is required.
 
 ```bash
-npm install --global @coinbase/coinbase-cli
+npm exec -- coinbase --version
 ```
 
 Set up AgentCash once on the local machine, then fund it if you want to use paid endpoints:
@@ -74,13 +74,13 @@ Provide `COINBASE_KEY_ID` and `COINBASE_KEY_SECRET` to enable balances, real pre
 | Trade-size impact and estimated fees | Coinbase live order book and account fee tier |
 | On-chain token and cohort flows | Nansen token screener and flow intelligence over x402 |
 | Upcoming project, macro, and regulatory catalysts | Exa search, date-grounded by OpenAI |
-| Balances, products, orders, fills, transfers | Coinbase for Agents CLI/MCP |
+| Equities, spot crypto, US futures, balances, products, order history, fills, and conversion quotes | Coinbase for Agents CLI/MCP |
 | Paid data, enrichment, and premium APIs | AgentCash over x402 or MPP |
 | Additional paid-API discovery | Orthogonal catalog (optional) |
 
-The asset is inferred from speech. Any syntactically valid Coinbase `*-USD` spot product can be requested; BTC and HYPE only receive richer search wording, while other assets use a generic ecosystem query.
+The research asset is inferred from speech. Crypto-specific views accept Coinbase USD products; general live research can cover any subject through Exa and paid x402 sources. Coinbase's dynamic tools expose the current product catalog across supported S&P 500 equities, spot crypto, and US futures.
 
-For priced orders, the server fetches the selected product's live `base_increment` and `quote_increment`. It converts dollar-denominated buys and quantizes both size and price before sending a preview to Coinbase; there are no HYPE-, amount-, or price-specific production rules.
+Every voice order uses a guarded preview and fresh confirmation. Raw Coinbase mutations are excluded from the agent's dynamic tool catalog, so an order cannot bypass this flow. For priced orders, the server fetches the selected product's live `base_increment` and `quote_increment`, converts quote-currency sizing when appropriate, and quantizes size and price before Coinbase sees the preview. Futures are sized in contracts. Extended-hours equities use Coinbase's documented whole-share limit-order sessions.
 
 These views are requested independently rather than bundled together. Example prompts include “show HYPE derivatives positioning,” “estimate the impact of buying $5,000 of BTC,” “show my position risk,” “show HYPE on-chain flows,” and “what catalysts are scheduled for HYPE in the next 90 days?”
 
