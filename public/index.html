@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b0c0d" />
+    <meta name="theme-color" content="#f6f8fc" />
     <meta name="description" content="Fork and run your own voice-first crypto research and trading agent." />
     <meta property="og:title" content="Coinbase for Agents" />
     <meta property="og:description" content="Your voice-first market agent. Open source, local first, and yours to run." />
@@ -18,75 +18,35 @@
   <body>
     <div class="page-shell">
       <header class="masthead">
-        <a class="wordmark" href="/" aria-label="Coinbase for Agents home">
-          <span class="mark" aria-hidden="true"></span>
-          <span>Coinbase for Agents</span>
-        </a>
+        <a class="wordmark" href="/">Coinbase for Agents</a>
         <a class="github-link" href="https://github.com/Must-be-Ash/c4a-gpt-realtime" target="_blank" rel="noreferrer">
           GitHub <span aria-hidden="true">↗</span>
         </a>
       </header>
 
-      <main>
-        <section class="hero" aria-labelledby="hero-title">
-          <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> Open source · Local first</p>
-          <h1 id="hero-title">Your market agent.<br /><span>Run it yourself.</span></h1>
-          <p class="lede">
-            Talk through crypto research, live market data, portfolio risk, and guarded Coinbase trades.
-            Your keys stay on your machine. Your coding agent handles the setup.
-          </p>
+      <main class="main">
+        <section class="intro" aria-labelledby="hero-title">
+          <h1 id="hero-title">
+            <span>Your market</span>
+            <span>agent. Run it</span>
+            <span>yourself.</span>
+          </h1>
+          <p class="dek">A voice-first crypto research and trading agent that runs on your machine.</p>
 
           <section class="prompt-block" aria-labelledby="prompt-label">
             <div class="prompt-card">
               <code id="setupPrompt">Read https://coinbase-for-agents.vercel.app/skill and help me set up my own Coinbase for Agents.</code>
               <button id="copyPrompt" class="copy-button" type="button" aria-label="Copy setup prompt">
-                <span class="copy-icon" aria-hidden="true"></span>
                 <span class="copy-label">Copy</span>
               </button>
             </div>
             <p id="prompt-label">Paste this into Codex, Claude Code, Cursor, or your coding agent.</p>
           </section>
-
-          <div class="hero-links">
-            <a class="text-link" href="#how-it-works">How it works <span aria-hidden="true">↓</span></a>
-            <a class="text-link" href="https://github.com/Must-be-Ash/c4a-gpt-realtime" target="_blank" rel="noreferrer">View source <span aria-hidden="true">↗</span></a>
-          </div>
-        </section>
-
-        <section class="capabilities" aria-label="What your agent can do">
-          <article>
-            <span>01</span>
-            <h2>Ask the market</h2>
-            <p>Speak naturally about prices, news, prediction markets, catalysts, positioning, and on-chain flows.</p>
-          </article>
-          <article>
-            <span>02</span>
-            <h2>See the evidence</h2>
-            <p>Get live charts, sourced research, market depth, risk views, and reusable reports as you talk.</p>
-          </article>
-          <article>
-            <span>03</span>
-            <h2>Trade with a guardrail</h2>
-            <p>Preview exact Coinbase orders and execute only after a fresh spoken confirmation.</p>
-          </article>
-        </section>
-
-        <section id="how-it-works" class="how-it-works" aria-labelledby="how-title">
-          <div>
-            <p class="section-label">Agent-guided setup</p>
-            <h2 id="how-title">One prompt.<br />A working local agent.</h2>
-          </div>
-          <ol>
-            <li><span>1</span><div><strong>Fork and clone</strong><p>Your agent creates your copy and checks your local tools.</p></div></li>
-            <li><span>2</span><div><strong>Connect your keys</strong><p>It guides you to OpenAI, Exa, and optional Coinbase credentials without putting secrets in chat.</p></div></li>
-            <li><span>3</span><div><strong>Verify and launch</strong><p>It installs, runs the checks, starts the app, and helps you make your first voice request.</p></div></li>
-          </ol>
         </section>
       </main>
 
       <footer>
-        <p>Built for people who want an agent they can inspect, change, and own.</p>
-        <p>MIT licensed · Experimental software</p>
+        <p>MIT licensed</p>
       </footer>
     </div>
     <script src="/landing.js"></script>

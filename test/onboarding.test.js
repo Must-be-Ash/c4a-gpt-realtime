@@ -11,6 +11,8 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.match(page, /id="setupPrompt"/);
   assert.match(page, /id="copyPrompt"/);
   assert.match(page, /Paste this into Codex, Claude Code, Cursor/);
+  assert.doesNotMatch(page, /class="(?:mark|status-dot|capabilities|how-it-works|hero-links)"/);
+  assert.equal((page.match(/Must-be-Ash\/c4a-gpt-realtime/g) ?? []).length, 1);
   assert.match(script, /new URL\("\/skill", window\.location\.origin\)/);
   assert.match(script, /navigator\.clipboard\.writeText\(prompt\)/);
 });
