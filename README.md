@@ -1,6 +1,18 @@
 # Coinbase for Agents
 
-A local voice prototype that uses OpenAI Realtime for conversation, Coinbase for market data and trading, Exa for current news research, Polymarket for market sentiment, AgentCash for paid data calls, and optionally Orthogonal to discover more payable APIs.
+Your own voice-first crypto research and trading agent. It uses OpenAI Realtime for conversation, Coinbase for live market data and guarded trading, Exa for current news, Polymarket for market sentiment, and AgentCash for optional paid data.
+
+## Get started with your coding agent
+
+Paste this prompt into Codex, Claude Code, Cursor, or another coding agent:
+
+```text
+Read https://coinbase-for-agents.vercel.app/skill and help me set up my own Coinbase for Agents.
+```
+
+The agent-guided flow forks or clones the repository, checks your machine, installs dependencies, walks you to each API-key dashboard, verifies the configuration without exposing secrets, and launches the app locally.
+
+Visit [coinbase-for-agents.vercel.app](https://coinbase-for-agents.vercel.app) for the minimal quickstart, or read the reusable [`launch-coinbase-for-agents`](skills/launch-coinbase-for-agents/SKILL.md) skill directly.
 
 All research, market data, balances, previews, and orders use live providers. The application contains no runtime mock-data mode.
 
@@ -33,7 +45,7 @@ Set `ORTHOGONAL_API_KEY` to add Orthogonal's catalog as a discovery source. Orth
 
 Voice transcripts and redacted tool request/result/error diagnostics are written to `runtime/events.jsonl`. Paid calls also record their intent, endpoint, outcome, failure class, attempt count, distinct-endpoint count, and discovered-alternative count. The runtime directory is ignored by Git and can be inspected when debugging a demo failure.
 
-## Run locally
+## Or run locally yourself
 
 ```bash
 git clone https://github.com/Must-be-Ash/c4a-gpt-realtime.git
@@ -43,7 +55,7 @@ cp .env.example .env
 npm run dev
 ```
 
-Add the required keys to `.env`, then open [http://localhost:4173](http://localhost:4173).
+Add the required keys to `.env`, then open [http://localhost:4173/app/](http://localhost:4173/app/). The project landing page is served at [http://localhost:4173](http://localhost:4173).
 
 Provide `COINBASE_KEY_ID` and `COINBASE_KEY_SECRET` to enable balances, real previews, and order execution.
 

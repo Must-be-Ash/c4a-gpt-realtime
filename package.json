@@ -11,10 +11,10 @@
   "bugs": {
     "url": "https://github.com/Must-be-Ash/c4a-gpt-realtime/issues"
   },
-  "homepage": "https://github.com/Must-be-Ash/c4a-gpt-realtime#readme",
+  "homepage": "https://coinbase-for-agents.vercel.app",
   "type": "module",
   "scripts": {
-    "build": "esbuild public/app.js --bundle --format=esm --outfile=public/app.bundle.js",
+    "build": "node scripts/sync-skill.mjs && esbuild public/app.js --bundle --format=esm --outfile=public/app.bundle.js",
     "dev": "npm run build && node --watch src/server.js",
     "start": "npm run build && node src/server.js",
     "test": "node --test",

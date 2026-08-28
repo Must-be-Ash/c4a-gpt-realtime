@@ -138,6 +138,14 @@ const parseNewsRequest = (body, { requireFocus = false } = {}) => {
 app.disable("x-powered-by");
 app.use(express.json({ limit: "100kb" }));
 app.use("/reports", express.static(reportsDirectory));
+app.get("/skill", (_request, response) => {
+  response.set({
+    "cache-control": "public, max-age=300",
+    "content-type": "text/markdown; charset=utf-8",
+    "x-content-type-options": "nosniff",
+  });
+  response.sendFile(join(root, "public", "skill"));
+});
 app.use(express.static(join(root, "public")));
 
 const asyncRoute = (handler) => async (request, response, next) => {

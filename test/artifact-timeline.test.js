@@ -4,7 +4,7 @@ import test from "node:test";
 
 test("reports and order previews append as reusable conversation timeline entries", async () => {
   const [page, app] = await Promise.all([
-    readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/app/index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/app.js", import.meta.url), "utf8"),
   ]);
 

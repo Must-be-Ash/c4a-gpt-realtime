@@ -1,0 +1,4 @@
+interface:
+  display_name: "Launch Coinbase for Agents"
+  short_description: "Set up your own local voice market agent"
+  default_prompt: "Use $launch-coinbase-for-agents to fork, configure, verify, and launch my own local agent."

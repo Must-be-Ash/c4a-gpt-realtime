@@ -17,7 +17,7 @@ test("Polymarket-only requests use the targeted tool without news research", asy
 
 test("Polymarket artifact renderer has its card template", async () => {
   const [page, browserTools] = await Promise.all([
-    readFile(new URL("../public/index.html", import.meta.url), "utf8"),
+    readFile(new URL("../public/app/index.html", import.meta.url), "utf8"),
     readFile(new URL("../public/app.js", import.meta.url), "utf8"),
   ]);
 
