@@ -20,34 +20,51 @@
       <header class="masthead">
         <a class="wordmark" href="/">Coinbase for Agents Demo</a>
         <a class="github-link" href="https://github.com/Must-be-Ash/c4a-gpt-realtime" target="_blank" rel="noreferrer">
-          GitHub <span aria-hidden="true">↗</span>
+          <svg class="github-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3.28-.36 6.72-1.61 6.72-7.25A5.65 5.65 0 0 0 19.22 3.3 5.4 5.4 0 0 0 19.08 1S17.9.65 15 2.48a13.38 13.38 0 0 0-7 0C5.1.65 3.92 1 3.92 1a5.4 5.4 0 0 0-.14 2.3A5.65 5.65 0 0 0 2.28 7.25c0 5.63 3.44 6.88 6.72 7.25A4.8 4.8 0 0 0 8 18v4"></path>
+            <path d="M8 19c-3 .9-3-1.5-4-2"></path>
+          </svg>
+          <span>GitHub</span>
+          <span aria-hidden="true">↗</span>
         </a>
       </header>
 
       <main class="main">
         <section class="intro" aria-labelledby="hero-title">
-          <h1 id="hero-title">
-            <span>Markets move fast.</span>
-            <span class="hero-accent">Your research should too.</span>
-          </h1>
-          <p class="dek">Voice-first agent that helps you research and make better informed trades at the speed of thought</p>
+          <div class="hero-copy">
+            <h1 id="hero-title">
+              <span>Markets move fast.</span>
+              <span class="hero-accent">Your research should too.</span>
+            </h1>
+            <p class="dek">Voice-first agent that helps you research and make better informed trades at the speed of thought</p>
 
-          <section class="prompt-block" aria-labelledby="prompt-label">
-            <div class="prompt-card">
-              <code id="setupPrompt">Read https://coinbase-for-agents.vercel.app/skill and help me set up my own Coinbase for Agents.</code>
-              <button id="copyPrompt" class="copy-button" type="button" aria-label="Copy setup prompt">
-                <svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <rect x="8" y="8" width="11" height="11" rx="2"></rect>
-                  <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
-                </svg>
-                <svg class="check-icon" viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m5 12 4 4L19 6"></path>
-                </svg>
-                <span class="copy-label sr-only">Copy</span>
-              </button>
+            <section class="prompt-block" aria-labelledby="prompt-label">
+              <div class="prompt-card">
+                <code id="setupPrompt">Read https://coinbase-for-agents.vercel.app/skill and help me set up my own Coinbase for Agents.</code>
+                <button id="copyPrompt" class="copy-button" type="button" aria-label="Copy setup prompt">
+                  <svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="8" y="8" width="11" height="11" rx="2"></rect>
+                    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+                  </svg>
+                  <svg class="check-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m5 12 4 4L19 6"></path>
+                  </svg>
+                  <span class="copy-label sr-only">Copy</span>
+                </button>
+              </div>
+              <p id="prompt-label">Paste this into Codex, Claude Code, Cursor, or your coding agent.</p>
+            </section>
+          </div>
+
+          <aside class="demo-frame" aria-label="Coinbase for Agents product demo">
+            <div class="demo-frame-header">
+              <span>Product demo</span>
+              <a href="https://www.youtube.com/watch?v=k0WlIw-uEJc" target="_blank" rel="noreferrer">Watch on YouTube <span aria-hidden="true">↗</span></a>
             </div>
-            <p id="prompt-label">Paste this into Codex, Claude Code, Cursor, or your coding agent.</p>
-          </section>
+            <div class="demo-video">
+              <iframe src="https://www.youtube-nocookie.com/embed/k0WlIw-uEJc?rel=0" title="Coinbase for Agents product demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+            </div>
+          </aside>
         </section>
       </main>
 

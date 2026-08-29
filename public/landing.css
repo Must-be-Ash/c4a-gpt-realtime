@@ -52,25 +52,45 @@ button { font: inherit; }
   letter-spacing: -0.03em;
 }
 
-.github-link { color: var(--muted); }
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.github-icon {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
 
 .github-link:hover { color: var(--accent); }
 .github-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 
 .main {
   display: grid;
-  width: min(100%, 1180px);
+  width: min(100%, 1500px);
   align-self: center;
   justify-self: center;
   padding-block: clamp(64px, 11vh, 120px);
 }
 
-.intro { max-width: 980px; }
+.intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr);
+  align-items: center;
+  gap: clamp(36px, 4vw, 68px);
+}
 
 h1 {
-  max-width: 980px;
+  max-width: 100%;
   margin: 0;
-  font-size: clamp(52px, 7vw, 88px);
+  font-size: clamp(52px, 5vw, 80px);
   font-weight: 600;
   letter-spacing: -0.07em;
   line-height: 0.96;
@@ -206,6 +226,58 @@ h1 > span { display: block; }
   margin: 10px 10px 0;
   color: var(--muted);
   font-size: 12px;
+}
+
+.demo-frame {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: 0 24px 70px rgba(31, 43, 66, 0.12);
+}
+
+.demo-frame-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 8px 12px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.demo-frame-header a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.demo-frame-header a:hover { color: var(--accent); }
+.demo-frame-header a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.demo-video {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #0b0d12;
+  aspect-ratio: 16 / 9;
+}
+
+.demo-video iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+@media (max-width: 980px) {
+  .intro { grid-template-columns: 1fr; }
+  .demo-frame { width: min(100%, 760px); }
+  h1 { font-size: clamp(52px, 8vw, 80px); }
 }
 
 @media (max-width: 640px) {
