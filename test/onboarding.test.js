@@ -15,6 +15,8 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.match(page, /class="github-icon"/);
   assert.match(page, /youtube-nocookie\.com\/embed\/k0WlIw-uEJc/);
   assert.match(page, /class="demo-frame"/);
+  assert.ok(page.indexOf('class="dek"') < page.indexOf('class="demo-frame"'));
+  assert.ok(page.indexOf('class="demo-frame"') < page.indexOf('class="prompt-block"'));
   assert.match(page, /Paste this into Codex, Claude Code, Cursor/);
   assert.match(page, /Markets move fast\./);
   assert.match(page, /class="hero-accent">Your research should too\.<\/span>/);
