@@ -81,7 +81,10 @@ button { font: inherit; }
 }
 
 .intro {
-  width: min(100%, 980px);
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(360px, 1fr);
+  align-items: center;
+  gap: clamp(36px, 4vw, 68px);
 }
 
 h1 {
@@ -107,7 +110,7 @@ h1 > span { display: block; }
 
 .prompt-block {
   width: min(calc(100% + 40px), 720px);
-  margin-top: 28px;
+  margin-top: 34px;
 }
 
 .prompt-card {
@@ -226,9 +229,7 @@ h1 > span { display: block; }
 }
 
 .demo-frame {
-  width: min(100%, 760px);
   min-width: 0;
-  margin-top: 34px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 26px;
@@ -273,12 +274,17 @@ h1 > span { display: block; }
   border: 0;
 }
 
+@media (max-width: 980px) {
+  .intro { grid-template-columns: 1fr; }
+  .demo-frame { width: min(100%, 760px); }
+  h1 { font-size: clamp(52px, 8vw, 80px); }
+}
+
 @media (max-width: 640px) {
   .page-shell { padding: 22px 18px; }
   .main { padding-block: 58px; }
   h1 { font-size: clamp(50px, 17vw, 76px); }
   .dek { margin-top: 22px; }
-  .demo-frame { margin-top: 28px; }
   .prompt-block { width: 100%; margin-top: 28px; }
   .prompt-card { grid-template-columns: 1fr; padding: 12px; }
   .prompt-card code { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
