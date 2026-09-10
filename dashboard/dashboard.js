@@ -1,0 +1,207 @@
+// Read-only live dashboard. Artifacts-first: charts/research/trades render into the
+// same artifact feed the local app uses, with the same visuals (public/styles.css +
+// shared renderers). Spoken text passes along the bottom as captions (subtitles),
+// mirroring the local app's live captions — it is not a chat log.
+
+import {
+  append,
+  renderCandles,
+  renderDepth,
+  renderPolymarketArtifact,
+  populateGenericArtifact,
+} from "../public/artifact-render.js";
+import { buildToolResultArtifact, buildSmartMoneyArtifact } from "../public/tool-result-artifact.js";
+import { captionWindow } from "../public/caption-window.js";
+
+const $ = (selector) => document.querySelector(selector);
+const elements = {
+  themeToggle: $("#themeToggle"),
+  themeColor: $('meta[name="theme-color"]'),
+  callPill: $("#callPill"),
+  connDot: $("#connDot"),
+  idleNote: $("#idleNote"),
+  artifacts: $("#artifacts"),
+  captions: $("#captions"),
+  tradeTemplate: $("#tradeTemplate"),
+};
+
+// ── Theme (same behavior as the local app) ──
+function applyTheme(theme) {
+  const next = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  elements.themeColor.content = next === "dark" ? "#080a0f" : "#f6f8fc";
+}
+applyTheme(document.documentElement.dataset.theme);
+elements.themeToggle.addEventListener("click", () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(next);
+  try { localStorage.setItem("coinbase-agents-theme", next); } catch { /* still applies this page */ }
+});
+
+// ── Call status ──
+function setCall(state, label) {
+  elements.callPill.className = `call-pill ${state}`;
+  elements.callPill.textContent = label;
+}
+
+// ── Artifact feed ──
+function appendArtifact(node) {
+  elements.idleNote.hidden = true;
+  elements.artifacts.hidden = false;
+  elements.artifacts.append(node);
+  node.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function genericArtifact(spec, variant = null) {
+  const article = document.createElement("article");
+  populateGenericArtifact(article, spec, { variant });
+  appendArtifact(article);
+}
+
+function chartArtifact(title, sourceLabel, data, renderer, variant) {
+  const article = document.createElement("article");
+  article.className = variant ? `artifact ${variant}-artifact` : "artifact";
+  const header = append(article, "header", "artifact-header");
+  append(header, "h2", null, title);
+  append(header, "span", "artifact-state done", "ready");
+  const chart = append(article, "div", "chart");
+  const footer = append(article, "footer", "artifact-footer");
+  append(footer, "span", null, sourceLabel);
+  append(footer, "span", null, new Date().toLocaleTimeString());
+  appendArtifact(article);
+  try {
+    renderer(chart, data);
+  } catch (error) {
+    chart.replaceChildren();
+    append(chart, "p", "artifact-error", error.message);
+  }
+}
+
+function renderReport(event) {
+  const report = event.report;
+  const title = event.title || (report?.asset?.productId ? `${report.asset.productId} · research` : "Research");
+  const source = report?.mode === "news" ? "Exa news" : "Exa research + Coinbase";
+  const spec = buildToolResultArtifact({ title, source, result: report ?? {} });
+  if (event.reportUrl) {
+    spec.blocks.push({ type: "links", title: "Report", items: [{ label: "Open full report", url: new URL(event.reportUrl, location.origin).href, detail: null }] });
+  }
+  genericArtifact(spec, "report");
+}
+
+function renderTrade(event) {
+  const executed = event.kind === "execution";
+  const data = event.data || {};
+  const panel = elements.tradeTemplate.content.firstElementChild.cloneNode(true);
+  const order = data.order || {};
+  const quoteCurrency = (order.productId || "").split("-").at(-1);
+  const amount = order.quoteSize != null ? `${order.quoteSize} ${quoteCurrency}`
+    : order.baseSize != null ? `${order.baseSize} ${(order.productId || "").split("-")[0]}`
+    : "";
+  const type = order.type === "stop_limit" ? "STOP LIMIT" : (order.type || "").toUpperCase();
+  panel.querySelector(".meta").textContent = executed ? "Coinbase order executed" : "Coinbase order preview";
+  panel.querySelector(".trade-title").textContent = `${order.side || ""} ${amount} of ${order.productId || ""} · ${type}`.trim();
+  const preview = data.preview || {};
+  panel.querySelector(".trade-details").textContent = [
+    order.limitPrice && `limit $${order.limitPrice}`,
+    preview.est_average_filled_price && `est fill $${preview.est_average_filled_price}`,
+    preview.commission_total && `fee $${preview.commission_total}`,
+    data.expiresAt && !executed && `expires ${new Date(data.expiresAt).toLocaleTimeString()}`,
+  ].filter(Boolean).join(" · ");
+  const status = panel.querySelector(".trade-status");
+  if (executed) {
+    const id = data.result?.order_id || data.result?.client_order_id || "submitted";
+    status.textContent = `Executed · ${id}`;
+    status.classList.add("executed");
+  }
+  appendArtifact(panel);
+}
+
+// ── Passing captions (subtitles) ──
+let captionTimer = null;
+function showCaption(role, text) {
+  const windowed = captionWindow(String(text || ""));
+  if (!windowed) return;
+  const who = role === "user" ? "user" : "model";
+  elements.captions.replaceChildren();
+  const caption = append(elements.captions, "div", `caption caption-${who}`);
+  append(caption, "span", "caption-label", who === "user" ? "YOU" : "AGENT");
+  append(caption, "strong", "caption-text", windowed);
+  elements.captions.hidden = false;
+  if (captionTimer) clearTimeout(captionTimer);
+  captionTimer = setTimeout(() => { elements.captions.hidden = true; }, 5000);
+}
+
+// ── Event dispatch ──
+function handle(event) {
+  switch (event.kind) {
+    case "call":
+      if (event.type === "incoming") setCall("incoming", event.caller ? `Incoming · ${event.caller}` : "Incoming");
+      else if (event.type === "rejected") setCall("rejected", "Rejected");
+      break;
+    case "status-update":
+      if (event.status === "in-progress") setCall("active", "On call");
+      else if (event.status === "ended") setCall("ended", "Call ended");
+      break;
+    case "transcript":
+      if (event.transcriptType === "final" || !event.transcriptType) showCaption(event.role, event.text);
+      break;
+    case "report":
+      renderReport(event);
+      break;
+    case "artifact": {
+      const data = event.data || {};
+      const variant = event.variant || null;
+      if (variant === "candles") chartArtifact(event.title || "Candles", "Coinbase live market data", data, renderCandles, variant);
+      else if (variant === "order-book") chartArtifact(event.title || "Order book", "Coinbase live market data", data, renderDepth, variant);
+      else if (variant === "polymarket") chartArtifact(event.title || "Polymarket", "Polymarket live markets", data, renderPolymarketArtifact, variant);
+      else if (variant === "smart-money") genericArtifact(buildSmartMoneyArtifact(data), variant);
+      else if (data.spec) genericArtifact(data.spec, variant);
+      else genericArtifact(buildToolResultArtifact({ title: event.title || "Result", source: null, result: data }), variant);
+      break;
+    }
+    case "balance":
+      genericArtifact(buildToolResultArtifact({ title: event.title || "Coinbase balances", source: "Coinbase", result: event.data || {} }), "balance");
+      break;
+    case "preview":
+      renderTrade(event);
+      break;
+    case "execution":
+      renderTrade(event);
+      break;
+    case "end-of-call-report":
+      setCall("ended", "Call ended");
+      elements.captions.hidden = true;
+      break;
+    default:
+      break;
+  }
+}
+
+// ── Agent number (the number to call) ──
+function formatPhone(number) {
+  const digits = String(number || "").replace(/[^\d+]/g, "");
+  const us = digits.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
+  return us ? `+1 (${us[1]}) ${us[2]}-${us[3]}` : (number || "");
+}
+async function loadAgentNumber() {
+  try {
+    const response = await fetch("/api/dashboard/config");
+    if (!response.ok) return;
+    const { phoneNumber } = await response.json();
+    if (!phoneNumber) return;
+    $("#agentNumberText").textContent = formatPhone(phoneNumber);
+    $("#agentNumber").href = `tel:${phoneNumber}`;
+  } catch { /* leave placeholder */ }
+}
+
+// ── SSE ──
+function connect() {
+  const source = new EventSource("/api/stream");
+  source.onopen = () => { elements.connDot.className = "conn-dot connected"; };
+  source.onmessage = (message) => {
+    try { handle(JSON.parse(message.data)); } catch { /* ignore malformed frames */ }
+  };
+  source.onerror = () => { elements.connDot.className = "conn-dot reconnecting"; }; // auto-reconnects
+}
+loadAgentNumber();
+connect();

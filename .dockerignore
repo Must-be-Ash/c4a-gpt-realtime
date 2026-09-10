@@ -1,0 +1,14 @@
+.git
+node_modules
+.env
+.env.local
+runtime
+reports/*.md
+reports/*.html
+*.log
+.vercel
+.DS_Store
+**/.DS_Store
+mermaid-diagram.svg
+WEB_PHONE_SPEC.md
+c4a.md

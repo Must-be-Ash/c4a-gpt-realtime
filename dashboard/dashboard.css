@@ -1,0 +1,55 @@
+/* Dashboard-only chrome. Artifacts, captions, cards, theme toggle all come from
+   /styles.css so the viewer matches the local app exactly. */
+
+.live-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 0 16px;
+  background: linear-gradient(var(--bg) 78%, transparent);
+}
+.live-title {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.live-title:hover { color: var(--accent); }
+.live-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.call-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.call-pill.incoming { color: var(--amber); border-color: var(--amber); animation: caption-in 1.1s ease-in-out infinite alternate; }
+.call-pill.active { color: var(--green); border-color: var(--green); }
+.call-pill.ended { color: var(--muted); }
+.call-pill.rejected { color: var(--red); border-color: var(--red); }
+
+.conn-dot { font-size: 10px; line-height: 1; }
+.conn-dot.connected { color: var(--green); }
+.conn-dot.reconnecting { color: var(--amber); }
+.conn-dot.dead { color: var(--red); }
+
+.idle-note {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 560px;
+  margin: 22vh auto 0;
+  text-align: center;
+}
+.idle-note[hidden] { display: none; }

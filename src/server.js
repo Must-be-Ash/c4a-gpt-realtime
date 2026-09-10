@@ -44,6 +44,11 @@ import {
 } from "./services/agentcash-mcp.js";
 import { createOrthogonalDiscoveryClient } from "./services/orthogonal.js";
 import { createRuntimeLogger } from "./services/runtime-log.js";
+import { buildToolRegistry } from "./agent/tools.js";
+import { createVapiWebhook } from "./agent/vapi-webhook.js";
+import { createEventBus } from "./agent/event-bus.js";
+import { createCallStore } from "./agent/call-store.js";
+import { createAuth, loginPageHtml } from "./agent/auth.js";
 import {
   agentSafeX402,
   createSpongeMcpClient,
@@ -136,6 +141,131 @@ const parseNewsRequest = (body, { requireFocus = false } = {}) => {
 };
 
 app.disable("x-powered-by");
+// Health check for Fly (harmless locally).
+app.get("/healthz", (_request, response) => response.json({ ok: true }));
+
+const asyncRoute = (handler) => async (request, response, next) => {
+  try {
+    await handler(request, response);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ── Hosted phone capability (additive; off unless ENABLE_WEB_PHONE). Mounted
+//    before the global 100kb JSON parser so Vapi payloads get their own limit. ──
+if (config.enableWebPhone) {
+  // ── Private access: gate the app behind a password, EXCEPT the phone webhook,
+  //    the login page, the landing page, and login-page assets. The tool
+  //    registry's own localhost fetches carry an internal token to pass. ──
+  const auth = createAuth({ password: config.dashboardPassword, secret: config.sessionSecret });
+  const OPEN_PATHS = new Set(["/healthz", "/login", "/", "/index.html", "/styles.css", "/landing.js", "/landing.css", "/og.png", "/favicon.ico", "/skill"]);
+  const isOpen = (path) => OPEN_PATHS.has(path) || path.startsWith("/vapi/");
+  if (auth.enabled) {
+    app.use((request, response, next) => {
+      if (isOpen(request.path)) { next(); return; }
+      auth.requireAuth(request, response, next);
+    });
+    app.get("/login", (_request, response) => response.type("html").send(loginPageHtml()));
+    app.post("/login", express.urlencoded({ extended: false }), auth.login);
+  }
+
+  const toolRegistry = buildToolRegistry({
+    baseUrl: `http://127.0.0.1:${config.port}`,
+    headers: config.sessionSecret ? { "x-internal-token": config.sessionSecret } : {},
+  });
+  const eventBus = createEventBus();
+  const callStore = createCallStore({ dir: join(root, "runtime", "calls") });
+  const emitEvent = (event) => {
+    try { eventBus.publish(event); } catch { /* never let dashboard fan-out break a call */ }
+    callStore.record(event).catch(() => { /* history is best-effort */ });
+  };
+
+  app.post(
+    "/vapi/webhook",
+    express.json({ limit: "5mb" }),
+    createVapiWebhook({
+      registry: toolRegistry,
+      secret: config.vapiWebhookSecret,
+      allowedCallers: config.allowedCallers,
+      assistantId: config.vapiAgentId,
+      emit: emitEvent,
+      onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
+    }),
+  );
+
+  // Dashboard config (behind the gate): the number to call.
+  app.get("/api/dashboard/config", (_request, response) => {
+    response.json({ phoneNumber: config.vapiPhoneNumber });
+  });
+
+  // Call history (auth wraps these in M7).
+  app.get("/api/calls", asyncRoute(async (_request, response) => {
+    response.json(await callStore.listCalls());
+  }));
+  app.get("/api/calls/:id", asyncRoute(async (request, response) => {
+    const call = await callStore.getCall(request.params.id);
+    if (!call) { response.status(404).json({ error: "Call not found." }); return; }
+    response.json(call);
+  }));
+
+  // Live dashboard feed (SSE). Auth wraps this in M7.
+  const writeSseEvent = (response, event) => {
+    // No `event:` field on purpose — the dashboard switches on data.kind via onmessage.
+    response.write(`id: ${event.id}\n`);
+    response.write(`data: ${JSON.stringify(event)}\n\n`);
+  };
+  app.get("/api/stream", (request, response) => {
+    response.writeHead(200, {
+      "content-type": "text/event-stream",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+    });
+    let closed = false;
+    let unsubscribe = () => {};
+    let heartbeat = null;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      if (heartbeat) clearInterval(heartbeat);
+      unsubscribe();
+      try { response.end(); } catch { /* already gone */ }
+    };
+    // Isolate each write: a dead/slow subscriber must self-remove, never break
+    // fan-out to the other connected dashboards.
+    const send = (event) => {
+      if (closed) return;
+      try { writeSseEvent(response, event); } catch { cleanup(); }
+    };
+    response.write(`retry: 3000\n: connected (currentCall=${eventBus.currentCallId ?? "none"})\n\n`);
+    const lastEventId = Number(request.headers["last-event-id"] || request.query.lastEventId || 0);
+    if (lastEventId) {
+      // Reconnect: replay everything the client missed.
+      for (const event of eventBus.since(lastEventId)) send(event);
+    } else if (eventBus.currentCallId) {
+      // Fresh open mid-call: replay the active call so the dashboard isn't blank.
+      for (const event of eventBus.snapshot()) {
+        if (event.callId === eventBus.currentCallId) send(event);
+      }
+    }
+    unsubscribe = eventBus.subscribe(send);
+    heartbeat = setInterval(() => {
+      if (closed) return;
+      try { response.write(": ping\n\n"); } catch { cleanup(); }
+    }, 15_000);
+    request.on("close", cleanup);
+    request.on("error", cleanup);
+  });
+
+  // Read-only dashboard viewer (static assets). Auth wraps these in M7.
+  const dashboardDir = join(root, "dashboard");
+  app.get(["/dashboard", "/dashboard/"], (_request, response) => response.sendFile(join(dashboardDir, "index.html")));
+  app.use("/dashboard", express.static(dashboardDir));
+
+  logEvent("web_phone.enabled", { publicBaseUrl: config.publicBaseUrl });
+}
+
 app.use(express.json({ limit: "100kb" }));
 app.use("/reports", express.static(reportsDirectory));
 app.get("/skill", (_request, response) => {
@@ -148,13 +278,6 @@ app.get("/skill", (_request, response) => {
 });
 app.use(express.static(join(root, "public")));
 
-const asyncRoute = (handler) => async (request, response, next) => {
-  try {
-    await handler(request, response);
-  } catch (error) {
-    next(error);
-  }
-};
 
 app.get("/api/config", (_request, response) => response.json({
   ...publicConfig(),
@@ -347,7 +470,7 @@ app.post("/api/smart-money", asyncRoute(async (request, response) => {
   }
   const paid = parseAgentCashToolResult(paidResult);
   const result = {
-    ...summarizeSmartMoney(paid.data ?? paid, symbol),
+    ...summarizeSmartMoney(paid, symbol),
     payment: paid.paymentInfo ?? null,
     route: paid.route ?? null,
   };

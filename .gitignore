@@ -18,3 +18,4 @@ wallet.json
 solana-wallet.json
 *.pem
 *.key
+dashboard/dashboard.bundle.js

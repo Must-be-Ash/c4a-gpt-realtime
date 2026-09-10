@@ -53,3 +53,19 @@ test("runs the official Nansen CLI through the configured x402 or API-key enviro
   assert.deepEqual(calls[0].args, buildSmartMoneyArgs());
   assert.deepEqual(calls[0].options.env, { NANSEN_API_KEY: "key" });
 });
+
+test("counts trades from the AgentCash-unwrapped shape ({data:[...]}) and a bare array", () => {
+  const trades = [
+    { token_symbol: "BTC", side: "Long", action: "Add", value_usd: 1000 },
+    { token_symbol: "BTC", side: "Short", action: "Add", value_usd: 400 },
+    { token_symbol: "ETH", side: "Long", action: "Add", value_usd: 999 },
+  ];
+  // Shape returned by parseAgentCashToolResult for the Nansen x402 response.
+  const wrapped = summarizeSmartMoney({ data: trades }, "BTC");
+  assert.equal(wrapped.tradeCount, 2);
+  assert.equal(wrapped.lean, "bullish");
+  assert.equal(wrapped.bullishActivityUsd, 1000);
+  assert.equal(wrapped.bearishActivityUsd, 400);
+  // Also robust if handed the bare array.
+  assert.equal(summarizeSmartMoney(trades, "BTC").tradeCount, 2);
+});
