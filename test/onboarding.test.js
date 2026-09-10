@@ -22,7 +22,7 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.match(page, /Voice-first agent that helps you research and make better informed trades at the speed of thought/);
   assert.doesNotMatch(page, /—|–/);
   assert.doesNotMatch(page, /Your market|voice-first crypto research/);
-  assert.doesNotMatch(page, /MIT licensed|<footer/);
+  assert.doesNotMatch(page, /MIT licensed/);
   assert.doesNotMatch(page, /class="(?:mark|status-dot|capabilities|how-it-works|hero-links)"/);
   assert.equal((page.match(/Must-be-Ash\/c4a-gpt-realtime/g) ?? []).length, 1);
   assert.match(script, /new URL\("\/skill", window\.location\.origin\)/);

@@ -29,7 +29,7 @@ button { font: inherit; }
 .page-shell {
   display: grid;
   min-height: 100svh;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   padding: 26px clamp(20px, 4vw, 56px);
 }
 
@@ -79,6 +79,18 @@ button { font: inherit; }
   justify-self: center;
   padding-block: clamp(64px, 11vh, 120px);
 }
+
+.disclaimer {
+  width: min(100%, 1500px);
+  justify-self: center;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.disclaimer p { margin: 0; }
 
 .intro {
   display: grid;
