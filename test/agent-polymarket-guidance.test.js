@@ -16,11 +16,12 @@ test("Polymarket-only requests use the targeted tool without news research", asy
 });
 
 test("Polymarket artifact renderer has its card template", async () => {
-  const [page, browserTools] = await Promise.all([
+  const [page, renderer] = await Promise.all([
     readFile(new URL("../public/app/index.html", import.meta.url), "utf8"),
-    readFile(new URL("../public/app.js", import.meta.url), "utf8"),
+    // The renderer now lives in the shared module used by both the local app and dashboard.
+    readFile(new URL("../public/artifact-render.js", import.meta.url), "utf8"),
   ]);
 
-  assert.match(browserTools, /\$\(["']#polyCardTemplate["']\)\.content/);
+  assert.match(renderer, /(?:\$|document\.querySelector)\(["']#polyCardTemplate["']\)\.content/);
   assert.match(page, /<template\s+id=["']polyCardTemplate["']/);
 });

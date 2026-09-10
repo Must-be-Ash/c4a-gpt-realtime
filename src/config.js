@@ -20,6 +20,18 @@ export const config = {
   coinbaseEnv: process.env.COINBASE_ENV ?? "live",
   defaultProduct: process.env.DEFAULT_PRODUCT ?? "HYPE-USD",
   previewTtlMs: integer(process.env.PREVIEW_TTL_MS, 120_000),
+  // Hosted web + phone capability (off by default for local dev).
+  enableWebPhone: /^(1|true|yes)$/i.test(process.env.ENABLE_WEB_PHONE ?? ""),
+  publicBaseUrl: process.env.PUBLIC_BASE_URL ?? "",
+  vapiWebhookSecret: process.env.VAPI_WEBHOOK_SECRET ?? "",
+  vapiAgentId: process.env.VAPI_AGENT_ID ?? "",
+  vapiPhoneNumber: process.env.VAPI_PHONE_NUMBER ?? "",
+  dashboardPassword: process.env.DASHBOARD_PASSWORD ?? "",
+  sessionSecret: process.env.SESSION_SECRET ?? "",
+  allowedCallers: (process.env.PHONE_NUMBER ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
 };
 
 export const publicConfig = () => ({

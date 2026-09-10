@@ -84,6 +84,52 @@ Every voice order uses a guarded preview and fresh confirmation. Raw Coinbase mu
 
 These views are requested independently rather than bundled together. Example prompts include “show HYPE derivatives positioning,” “estimate the impact of buying $5,000 of BTC,” “show my position risk,” “show HYPE on-chain flows,” and “what catalysts are scheduled for HYPE in the next 90 days?”
 
+## Hosted: web dashboard + phone (optional)
+
+The app can also run **hosted** so you can phone the agent and watch it from a browser without your laptop. This is an **additive** capability — local `npm run dev` is unchanged and works exactly as before.
+
+- **Phone:** [Vapi](https://vapi.ai) provides the number and runs OpenAI Realtime (speech-to-speech) using your **BYOK OpenAI key**. Tools are executed by *this* server via a single webhook (`POST /vapi/webhook`), reusing all the same `src/services/*`. Inbound is restricted to your caller ID (`PHONE_NUMBER`).
+- **Web:** a private, read-only dashboard at `/dashboard` (password via `DASHBOARD_PASSWORD`) shows the live call **artifacts-first** — the same charts/reports the local app renders (shared via `public/artifact-render.js`) — with the spoken words passing along the bottom as subtitles. Call history persists under `runtime/` and is replayable.
+- **Host:** [Fly.io](https://fly.io) (always-on machine; the webhook must not cold-start).
+
+Everything hosted is gated behind `ENABLE_WEB_PHONE=1`; with it unset (the default), none of it mounts.
+
+### Deploy (Fly)
+
+```bash
+# one-time: create the app + volume, then stage secrets (see .env.example for the full list)
+fly apps create <app>
+fly volumes create data --size 1 --region <region> -a <app>
+fly secrets import -a <app> < your-secrets.env   # provider keys + VAPI_* + DASHBOARD_PASSWORD + SESSION_SECRET + VAPI_WEBHOOK_SECRET + ENABLE_WEB_PHONE=1 + PUBLIC_BASE_URL
+# AgentCash wallet (needed for paid endpoints) — stage the wallet files as base64:
+#   AGENTCASH_WALLET_JSON_B64, AGENTCASH_SOLANA_WALLET_JSON_B64, AGENTCASH_STATE_JSON_B64
+fly deploy --remote-only --ha=false -a <app>
+```
+
+The container entrypoint (`scripts/docker-entrypoint.sh`) writes the AgentCash wallet from those secrets into `~/.agentcash/` at boot.
+
+### Wire up Vapi
+
+1. In the Vapi dashboard → **Integrations → Model Providers → OpenAI**, add your OpenAI API key (BYOK). Realtime billing then runs on your OpenAI account.
+2. Point the assistant + phone number at the deployed webhook:
+
+```bash
+# enumerate tools from a local (unauthenticated) server so Coinbase MCP tools are included,
+# while the tools' webhook points at production:
+PORT=4173 ENABLE_WEB_PHONE=1 node src/server.js &          # local, no password → no auth
+PUBLIC_BASE_URL="https://<app>.fly.dev" \
+VAPI_WEBHOOK_SECRET="<same as Fly>" \
+TOOLS_BASE_URL="http://127.0.0.1:4173" \
+OPENAI_REALTIME_MODEL="gpt-realtime-2025-08-28" \
+node scripts/configure-vapi.mjs        # add --dry-run to preview without calling Vapi
+```
+
+Notes: Vapi's realtime model name is `gpt-realtime-2025-08-28` (not the local `gpt-realtime-2.1`); realtime voices are `alloy/echo/shimmer/marin/cedar`. Then **call your Vapi number from your allowlisted phone**.
+
+### Costs
+
+Vapi per-minute + OpenAI realtime tokens (on your key) + the Fly machine + any AgentCash paid data calls.
+
 ## Checks
 
 ```bash

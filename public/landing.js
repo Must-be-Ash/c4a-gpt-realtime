@@ -2,7 +2,7 @@ const promptElement = document.querySelector("#setupPrompt");
 const copyButton = document.querySelector("#copyPrompt");
 const copyLabel = copyButton?.querySelector(".copy-label");
 
-const prompt = `Read ${new URL("/skill", window.location.origin).href} and help me set up my own Coinbase for Agents.`;
+const prompt = `Read ${new URL("/skill", window.location.origin).href} and help me set up my own trading agent.`;
 promptElement.textContent = prompt;
 
 copyButton?.addEventListener("click", async () => {

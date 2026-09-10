@@ -11,7 +11,7 @@ test("landing page offers the agent-guided setup prompt", async () => {
 
   assert.match(page, /id="setupPrompt"/);
   assert.match(page, /id="copyPrompt"/);
-  assert.match(page, /Coinbase for Agents Demo/);
+  assert.match(page, /class="wordmark"[^>]*>Voice first realtime trading agent/);
   assert.match(page, /class="github-icon"/);
   assert.match(page, /youtube-nocookie\.com\/embed\/k0WlIw-uEJc/);
   assert.match(page, /class="demo-frame"/);

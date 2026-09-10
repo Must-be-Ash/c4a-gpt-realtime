@@ -52,6 +52,7 @@ const runNansen = (args, { env = process.env, timeoutMs = 35_000 } = {}) =>
   });
 
 const recordsFrom = (payload) => {
+  if (Array.isArray(payload)) return payload;
   if (Array.isArray(payload?.data?.data)) return payload.data.data;
   if (Array.isArray(payload?.data)) return payload.data;
   return [];

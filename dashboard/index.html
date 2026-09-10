@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080a0f" />
+    <title>Voice Trading Agent — Live</title>
+    <script>
+      try {
+        const savedTheme = localStorage.getItem("coinbase-agents-theme");
+        document.documentElement.dataset.theme = savedTheme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+      } catch {
+        document.documentElement.dataset.theme = "dark";
+      }
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/dashboard/dashboard.css" />
+  </head>
+  <body>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Switch color theme" title="Switch color theme">
+      <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.42 1.42M17.65 17.65l1.42 1.42M2 12h2M20 12h2M4.93 19.07l1.42-1.42M17.65 6.35l1.42-1.42"/></svg>
+      <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 15.3A8.5 8.5 0 0 1 8.7 4 8.5 8.5 0 1 0 20 15.3Z"/></svg>
+    </button>
+
+    <main>
+      <header class="live-bar">
+        <a id="agentNumber" class="live-title" href="#" title="Call your agent">📞 <span id="agentNumberText">…</span></a>
+        <span class="live-status">
+          <span id="callPill" class="call-pill idle">Idle</span>
+          <span id="connDot" class="conn-dot reconnecting" title="stream">●</span>
+        </span>
+      </header>
+
+      <p id="idleNote" class="idle-note">No active call. When you phone the agent, its charts, research, and trades appear here in real time — with what's said passing along the bottom.</p>
+
+      <section id="artifacts" class="artifact-feed" aria-label="Live artifacts" hidden></section>
+    </main>
+
+    <aside id="captions" class="captions" aria-live="polite" aria-label="Live captions" hidden></aside>
+
+    <template id="polyCardTemplate">
+      <article class="card"><p class="question"></p><div class="outcomes"></div><p class="meta poly-volume"></p></article>
+    </template>
+    <template id="tradeTemplate">
+      <section class="trade-panel">
+        <div><p class="meta">Coinbase order preview</p><h2 class="trade-title"></h2><p class="trade-details"></p></div>
+        <span class="trade-status">Waiting for confirmation</span>
+      </section>
+    </template>
+
+    <script type="module" src="/dashboard/dashboard.bundle.js"></script>
+  </body>
+</html>
