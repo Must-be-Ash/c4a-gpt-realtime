@@ -217,11 +217,15 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
       onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
     });
     app.post("/openai/incoming-call", express.raw({ type: "*/*", limit: "1mb" }), sip.handleIncomingCall);
-    // TeXML for the SIP trunk (Telnyx): dial the OpenAI SIP endpoint for our project.
-    // Point the Telnyx number's TeXML/Voice app at this URL — no manual SIP config.
-    app.get("/telnyx/texml", (_request, response) => {
+    // TeXML for the SIP trunk (Telnyx): dial the OpenAI SIP endpoint for our project,
+    // preserving the caller's number as callerId so OpenAI's From header (and our
+    // caller allowlist) sees the real caller. Point the Telnyx number's TeXML/Voice
+    // app at this URL — no manual SIP config.
+    app.all("/telnyx/texml", express.urlencoded({ extended: false }), (request, response) => {
+      const from = String(request.body?.From || request.query?.From || "").replace(/[^0-9+]/g, "");
+      const callerId = from ? ` callerId="${from}"` : "";
       response.type("application/xml").send(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Dial answerOnBridge="true"><Sip>sip:${config.openAiProjectId}@sip.api.openai.com;transport=tls</Sip></Dial></Response>`,
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Dial${callerId} answerOnBridge="true"><Sip>sip:${config.openAiProjectId}@sip.api.openai.com;transport=tls</Sip></Dial></Response>`,
       );
     });
     logEvent("openai_sip.enabled", { model: config.openAiSipModel });
