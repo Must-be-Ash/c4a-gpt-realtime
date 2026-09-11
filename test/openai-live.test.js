@@ -37,6 +37,7 @@ test("accepts a live SIP session with a delegation config (tools on the backend,
   assert.equal(session.model, "gpt-live-1");
   assert.equal(session.delegation.type, "responses");
   assert.equal(session.delegation.responses.model, "gpt-5.6-luna");
+  assert.deepEqual(session.delegation.responses.reasoning, { effort: "low" });
   assert.equal(session.delegation.responses.tools[0].name, "show_candle_chart");
   assert.equal(session.tools, undefined);
   assert.equal(session.audio.input, undefined, "no turn_detection on GPT-Live");

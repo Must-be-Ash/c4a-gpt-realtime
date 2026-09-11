@@ -34,6 +34,7 @@ export const config = {
   openAiSipDefaultAgent: process.env.OPENAI_SIP_AGENT ?? "gpt-realtime-2.1",
   // gpt-live-1 (GPT-Live API) delegation backend model.
   openAiLiveBackendModel: process.env.OPENAI_LIVE_BACKEND_MODEL ?? "gpt-5.6-luna",
+  openAiLiveReasoningEffort: process.env.OPENAI_LIVE_REASONING_EFFORT ?? "low",
   // Realtime-path latency knobs. Turn detection as JSON (see openai-sip.js DEFAULT_TURN_DETECTION).
   openAiSipTurnDetection: parseJson(process.env.OPENAI_SIP_TURN_DETECTION),
   openAiSipTranscribeModel: process.env.OPENAI_SIP_TRANSCRIBE_MODEL ?? "",

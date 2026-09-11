@@ -51,7 +51,7 @@ const toResponsesTool = (definition) => ({
  * @param {string[]} [opts.allowedCallers]
  */
 export function createOpenAiLive({
-  apiKey, model = "gpt-live-1", backendModel, voice, voiceInstructions, backendInstructions,
+  apiKey, model = "gpt-live-1", backendModel, reasoningEffort = "low", voice, voiceInstructions, backendInstructions,
   getToolDefinitions, registry, allowedCallers = [],
   greeting = "Hey — your trading agent here. What do you want to look at?",
   emit = () => {}, onCallEnd, log = () => {},
@@ -76,6 +76,8 @@ export function createOpenAiLive({
           tools: (getToolDefinitions?.() || []).map(toResponsesTool),
           tool_choice: "auto",
           parallel_tool_calls: true,
+          // Latency lever: low effort on the delegation backend (owner decision 2026-09-10).
+          ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}),
         },
       },
     };

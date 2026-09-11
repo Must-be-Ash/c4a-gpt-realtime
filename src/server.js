@@ -243,22 +243,33 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
     });
     // GPT-Live splits the prompt: a short voice-layer prompt (tone, interruptions,
     // when to delegate) and the full agent prompt on the delegation backend (tools).
-    const liveVoiceInstructions = `You are the voice of a crypto research and trading agent on a live phone call.
+    // Voice-layer prompt follows OpenAI's GPT-Live prompting template (personality,
+    // backchannels, interruptions, delegation policy). Tool procedures stay on the backend.
+    const liveVoiceInstructions = `# Personality
+You are the voice of the caller's personal crypto research and trading agent, on a live phone call. Calm, direct, brief. One or two short spoken sentences at a time, at a natural pace. Never read raw JSON, IDs, or long lists aloud.
 
-# Personality
-Calm, direct, brief. One or two short spoken sentences at a time. Never read raw JSON, IDs, or long lists aloud.
+# Backchannel policy
+Use moderate backchannels. Acknowledge naturally without competing with the main response.
 
-# Backchannels
-Use brief listening sounds while the caller speaks. Do not talk over them.
+# Interruption policy
+Stop speaking when the user interrupts. Listen to what they say. "Stop" means stop talking; it does not cancel work already delegated.
 
-# Interruptions
-If the caller starts talking, stop speaking immediately and listen. "Stop" means stop talking; it does not cancel work already delegated.
+# Delegation policy
+Backend tools: live prices, candle charts, order books, balances and positions, news and research, on-chain flows, derivatives positioning, prediction markets (Polymarket), catalysts, paid data via AgentCash, and Coinbase order preview and execution.
 
-# Delegation
-Delegate to the backend whenever the caller asks for a price, chart, order book, balance, position, news, research, on-chain or prediction-market data, or wants to preview or place a trade. Never guess a number or claim an action finished before the backend reports it. While the backend works, say at most one short phrase, then wait for its result.`;
+Delegate to the backend when:
+- the caller asks for any price, chart, balance, position, market, news, research, on-chain, or prediction-market information
+- the caller wants to preview, confirm, or place a trade
+- the answer depends on live data you do not have
+
+Do not delegate to the backend when:
+- the caller is greeting you, thinking aloud, or asking you to repeat or clarify what you just said
+
+Delegate before giving an answer that depends on backend work. Do not guess the result while waiting. Never promise a trade, quote a price, or say an action finished before the backend confirms it. Charts and reports appear on the caller's dashboard, so when the backend confirms a chart or report is shown, say so in a few words and move on.`;
     const live = createOpenAiLive({
       apiKey: config.openAiApiKey,
       backendModel: config.openAiLiveBackendModel,
+      reasoningEffort: config.openAiLiveReasoningEffort,
       voice: config.realtimeVoice,
       voiceInstructions: liveVoiceInstructions,
       backendInstructions: phoneInstructions,
@@ -281,10 +292,14 @@ Delegate to the backend whenever the caller asks for a price, chart, order book,
     // app at this URL — no manual SIP config.
     app.all("/telnyx/texml", express.urlencoded({ extended: false }), (request, response) => {
       const from = String(request.body?.From || request.query?.From || "").replace(/[^0-9+]/g, "");
-      logEvent("telnyx.texml.served", { from, to: request.body?.To || request.query?.To || null });
+      logEvent("telnyx.texml.served", { from, to: request.body?.To || request.query?.To || null, armed: settings.activeSipAgent() });
       const callerId = from ? ` callerId="${from}"` : "";
+      // GPT-Live SIP calls require SRTP ("srtp_required" on accept otherwise). Telnyx
+      // enables it per endpoint via the `secure` URI parameter. Realtime keeps the
+      // proven plain-TLS leg.
+      const secure = settings.activeSipAgent() === "gpt-live-1" ? ";secure=srtp" : "";
       response.type("application/xml").send(
-        `<?xml version="1.0" encoding="UTF-8"?><Response><Dial${callerId} answerOnBridge="true"><Sip>sip:${config.openAiProjectId}@sip.api.openai.com;transport=tls</Sip></Dial></Response>`,
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Dial${callerId} answerOnBridge="true"><Sip>sip:${config.openAiProjectId}@sip.api.openai.com;transport=tls${secure}</Sip></Dial></Response>`,
       );
     });
     settings.ready.then(() => logEvent("openai_sip.enabled", { model: config.openAiSipModel, liveBackend: config.openAiLiveBackendModel, armed: settings.activeSipAgent() }));
