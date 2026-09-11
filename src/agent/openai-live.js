@@ -209,10 +209,17 @@ export function createOpenAiLive({
         Promise.all(batch).then(() => send({ type: "response.create" }));
       };
 
+      const seenTypes = new Set();
       ws.onmessage = async (raw) => {
         let msg;
         try { msg = JSON.parse(typeof raw === "string" ? raw : raw.data); } catch { return; }
         const type = msg.type || "";
+        // Contract discovery: record each event shape once per call (type + keys, no payload).
+        const shapeKey = type === "response.event" ? `response.event:${msg.event?.type}` : type;
+        if (!seenTypes.has(shapeKey)) {
+          seenTypes.add(shapeKey);
+          log("openai.live.event_shape", { callId, type: shapeKey, keys: Object.keys(msg).slice(0, 12), innerKeys: msg.event ? Object.keys(msg.event).slice(0, 12) : undefined });
+        }
         if (type === "response.event") {
           const inner = msg.event || {};
           const delegationId = msg.delegation_id || null;

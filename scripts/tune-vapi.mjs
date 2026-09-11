@@ -5,7 +5,6 @@
 //   - stopSpeakingPlan: numWords 0 / voiceSeconds 0.2 / short backoff -> immediate barge-in
 //   - startSpeakingPlan: shorter waitSeconds, keep LiveKit smart endpointing (English)
 //   - realtime prompting: bullets, short replies, no narration of tool calls
-//   - temperature 0.6, maxTokens ~250 for conversational answers
 // Usage: node scripts/tune-vapi.mjs [--dry-run]     (env: VAPI_PRIVATE_KEY, VAPI_AGENT_ID)
 
 import { readFile, writeFile } from "node:fs/promises";
@@ -43,14 +42,16 @@ const backupPath = join(root, "runtime", `vapi-assistant-backup-${Date.now()}.js
 await writeFile(backupPath, JSON.stringify(current, null, 2)).catch(() => {});
 
 const instructions = (await readFile(join(root, "AGENT.md"), "utf8")) + PHONE_ADDENDUM;
+// No temperature/maxTokens on the realtime model: a token cap truncates spoken
+// audio mid-sentence (owner reported worse voice after the first tuning pass).
+const { temperature: _t, maxTokens: _m, ...modelRest } = current.model;
 const patch = {
   model: {
-    ...current.model,
+    ...modelRest,
     messages: [{ role: "system", content: instructions }],
-    temperature: 0.6,
-    maxTokens: 250,
   },
-  startSpeakingPlan: { ...(current.startSpeakingPlan || {}), waitSeconds: 0.3, smartEndpointingEnabled: "livekit" },
+  // waitSeconds = pause after the CALLER stops before the assistant may speak.
+  startSpeakingPlan: { ...(current.startSpeakingPlan || {}), waitSeconds: 0.2, smartEndpointingEnabled: "livekit" },
   stopSpeakingPlan: { numWords: 0, voiceSeconds: 0.2, backoffSeconds: 0.5 },
 };
 

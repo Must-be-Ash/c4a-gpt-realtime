@@ -266,13 +266,14 @@ Do not delegate to the backend when:
 - the caller is greeting you, thinking aloud, or asking you to repeat or clarify what you just said
 
 Delegate before giving an answer that depends on backend work. Do not guess the result while waiting. Never promise a trade, quote a price, or say an action finished before the backend confirms it. Charts and reports appear on the caller's dashboard, so when the backend confirms a chart or report is shown, say so in a few words and move on.`;
+    const liveBackendInstructions = `${phoneInstructions}\n\n## Delegation backend (GPT-Live)\nYou are the backend for a full-duplex voice model that speaks your output aloud. Call the needed tools immediately; do not narrate. Return only the facts and status the voice model needs, in at most two short sentences. No headings, no lists, no restating the question. When a show_/present tool succeeds, reply with a few words (for example: "BTC weekly chart is on the dashboard.").`;
     const live = createOpenAiLive({
       apiKey: config.openAiApiKey,
       backendModel: config.openAiLiveBackendModel,
       reasoningEffort: config.openAiLiveReasoningEffort,
       voice: config.realtimeVoice,
       voiceInstructions: liveVoiceInstructions,
-      backendInstructions: phoneInstructions,
+      backendInstructions: liveBackendInstructions,
       getToolDefinitions: () => sipToolDefs,
       registry: toolRegistry,
       allowedCallers: config.allowedCallers,
