@@ -83,16 +83,10 @@ export function createOpenAiSip({
   const authHeaders = { authorization: `Bearer ${apiKey}`, "content-type": "application/json" };
 
   async function accept(callId) {
-    const session = {
-      type: "realtime",
-      model,
-      instructions,
-      audio: { output: { voice } },
-      tools: (getToolDefinitions?.() || []).map(toOpenAiTool),
-      turn_detection: TURN_DETECTION,
-    };
+    // Minimal accept (matches OpenAI's working reference). Voice, tools, and
+    // turn_detection are applied over the WS via session.update after attaching.
     return fetchImpl(`${OPENAI_API}/realtime/calls/${callId}/accept`, {
-      method: "POST", headers: authHeaders, body: JSON.stringify(session),
+      method: "POST", headers: authHeaders, body: JSON.stringify({ type: "realtime", model, instructions }),
     });
   }
 
@@ -180,6 +174,7 @@ export function createOpenAiSip({
           type: "session.update",
           session: {
             instructions,
+            audio: { output: { voice } },
             tools: (getToolDefinitions?.() || []).map(toOpenAiTool),
             turn_detection: TURN_DETECTION,
           },
