@@ -121,26 +121,28 @@ export function createOpenAiSip({
     if (allowedCallers.length && !allowedCallers.includes(caller)) {
       log("openai.sip.rejected_allowlist", { callId, caller, allowed: allowedCallers });
       emit({ kind: "call", type: "rejected", callId, caller, at: Date.now() });
-      await reject(callId).catch(() => {});
       response.sendStatus(200);
+      reject(callId).catch(() => {});
       return;
     }
-    try {
-      const acc = await accept(callId);
-      const body = await acc.text().catch(() => "");
-      if (!acc.ok) {
-        log("openai.sip.accept_failed", { callId, status: acc.status, body: body.slice(0, 500) });
-        response.sendStatus(200);
-        return;
+    // Ack the webhook immediately so OpenAI doesn't retry (which spawns duplicate
+    // call_ids). Accept + attach the WS in the background.
+    response.sendStatus(200);
+    (async () => {
+      try {
+        const acc = await accept(callId);
+        const body = await acc.text().catch(() => "");
+        if (!acc.ok) {
+          log("openai.sip.accept_failed", { callId, status: acc.status, body: body.slice(0, 500) });
+          return;
+        }
+        log("openai.sip.accepted", { callId, caller, model, body: body.slice(0, 500) });
+        connect(callId, caller);
+      } catch (error) {
+        log("openai.sip.accept_error", { callId, error: error.message });
+        emit({ kind: "error", callId, error: error.message, at: Date.now() });
       }
-      log("openai.sip.accepted", { callId, caller, model, body: body.slice(0, 500) });
-      response.sendStatus(200);
-      connect(callId, caller); // manage the session (tools + transcripts) in the background
-    } catch (error) {
-      log("openai.sip.accept_error", { callId, error: error.message });
-      emit({ kind: "error", callId, error: error.message, at: Date.now() });
-      response.status(502).json({ error: error.message });
-    }
+    })();
   }
 
   // Open the realtime control WebSocket and run the tool loop. `accept` returns 200
