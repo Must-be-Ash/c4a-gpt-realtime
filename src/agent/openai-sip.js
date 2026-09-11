@@ -74,6 +74,7 @@ const toOpenAiTool = (definition) => ({
 export function createOpenAiSip({
   apiKey, model, voice, instructions, getToolDefinitions,
   registry, allowedCallers = [], webhookSecret,
+  greeting = "Hey — your trading agent here. What do you want to look at?",
   emit = () => {}, onCallEnd,
   fetchImpl = fetch, wsFactory,
 }) {
@@ -153,6 +154,8 @@ export function createOpenAiSip({
           turn_detection: TURN_DETECTION,
         },
       });
+      // Answer proactively with a short greeting.
+      if (greeting) send({ type: "response.create", response: { instructions: `Greet the caller in one short sentence: "${greeting}"` } });
       emit({ kind: "status-update", callId, status: "in-progress", at: Date.now() });
     };
 
