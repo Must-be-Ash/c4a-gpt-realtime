@@ -3,6 +3,7 @@ import { config as loadEnv } from "dotenv";
 loadEnv({ path: ".env.local" });
 loadEnv();
 
+const parseJson = (value) => { if (!value) return null; try { return JSON.parse(value); } catch { return null; } };
 const integer = (value, fallback) => {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -28,7 +29,15 @@ export const config = {
   vapiPhoneNumber: process.env.VAPI_PHONE_NUMBER ?? "",
   // Direct OpenAI Realtime over SIP (no Vapi) — pick any realtime model incl. gpt-live-1.
   enableOpenAiSip: /^(1|true|yes)$/i.test(process.env.ENABLE_OPENAI_SIP ?? ""),
-  openAiSipModel: process.env.OPENAI_SIP_MODEL ?? "gpt-realtime-2025-08-28",
+  openAiSipModel: process.env.OPENAI_SIP_MODEL ?? "gpt-realtime-2.1",
+  // Which OpenAI agent answers the Telnyx number when runtime/settings.json is absent.
+  openAiSipDefaultAgent: process.env.OPENAI_SIP_AGENT ?? "gpt-realtime-2.1",
+  // gpt-live-1 (GPT-Live API) delegation backend model.
+  openAiLiveBackendModel: process.env.OPENAI_LIVE_BACKEND_MODEL ?? "gpt-5.6-luna",
+  // Realtime-path latency knobs. Turn detection as JSON (see openai-sip.js DEFAULT_TURN_DETECTION).
+  openAiSipTurnDetection: parseJson(process.env.OPENAI_SIP_TURN_DETECTION),
+  openAiSipTranscribeModel: process.env.OPENAI_SIP_TRANSCRIBE_MODEL ?? "",
+  openAiSipFiller: /^(1|true|yes)$/i.test(process.env.OPENAI_SIP_FILLER ?? ""),
   openAiWebhookSecret: process.env.OPENAI_WEBHOOK_SECRET ?? "",
   openAiProjectId: process.env.OPENAI_PROJECT_ID ?? "",
   sipPhoneNumber: process.env.SIP_PHONE_NUMBER ?? "",

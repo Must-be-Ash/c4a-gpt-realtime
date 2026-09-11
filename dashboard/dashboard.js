@@ -23,6 +23,8 @@ const elements = {
   artifacts: $("#artifacts"),
   captions: $("#captions"),
   tradeTemplate: $("#tradeTemplate"),
+  agentSelect: $("#agentSelect"),
+  agentHint: $("#agentHint"),
 };
 
 // ── Theme (same behavior as the local app) ──
@@ -170,8 +172,12 @@ function handle(event) {
     case "execution":
       renderTrade(event);
       break;
+    case "latency":
+      if (event.type === "turn") elements.callPill.title = `last reply gap ${event.ms} ms`;
+      else if (event.type === "summary" && event.medianTurnMs != null) setCall("ended", `Ended · median reply ${event.medianTurnMs} ms`);
+      break;
     case "end-of-call-report":
-      setCall("ended", "Call ended");
+      if (!elements.callPill.textContent.startsWith("Ended")) setCall("ended", "Call ended");
       elements.captions.hidden = true;
       break;
     default:
@@ -185,16 +191,42 @@ function formatPhone(number) {
   const us = digits.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
   return us ? `+1 (${us[1]}) ${us[2]}-${us[3]}` : (number || "");
 }
+function renderAgentState(state) {
+  const selected = state.agents.find((a) => a.id === state.selectedAgent) || state.agents[0];
+  elements.agentSelect.value = selected.id;
+  if (selected.number) {
+    $("#agentNumberText").textContent = formatPhone(selected.number);
+    $("#agentNumber").href = `tel:${selected.number}`;
+  } else {
+    $("#agentNumberText").textContent = "no number set";
+    $("#agentNumber").removeAttribute("href");
+  }
+  elements.agentHint.className = "agent-hint";
+  elements.agentHint.textContent = selected.armable
+    ? (state.activeSipAgent === selected.id ? "armed on this number" : `number is armed to ${state.activeSipAgent}`)
+    : "Vapi number";
+}
 async function loadAgentNumber() {
   try {
-    const response = await fetch("/api/dashboard/config");
+    const response = await fetch("/api/agent");
     if (!response.ok) return;
-    const { phoneNumber } = await response.json();
-    if (!phoneNumber) return;
-    $("#agentNumberText").textContent = formatPhone(phoneNumber);
-    $("#agentNumber").href = `tel:${phoneNumber}`;
+    renderAgentState(await response.json());
   } catch { /* leave placeholder */ }
 }
+elements.agentSelect.addEventListener("change", async () => {
+  const agent = elements.agentSelect.value;
+  elements.agentHint.className = "agent-hint";
+  elements.agentHint.textContent = "switching…";
+  try {
+    const response = await fetch("/api/agent", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ agent }) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    renderAgentState(await response.json());
+  } catch (error) {
+    elements.agentHint.className = "agent-hint error";
+    elements.agentHint.textContent = `switch failed: ${error.message}`;
+    loadAgentNumber();
+  }
+});
 
 // ── SSE ──
 function connect() {

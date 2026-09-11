@@ -21,6 +21,21 @@
   font-variant-numeric: tabular-nums;
 }
 .live-title:hover { color: var(--accent); }
+.agent-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.agent-select {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.agent-select:focus { outline: none; border-color: var(--accent); }
+.agent-hint { font-size: 12px; color: var(--muted); }
+.agent-hint.error { color: var(--red); }
 .live-status {
   display: flex;
   align-items: center;

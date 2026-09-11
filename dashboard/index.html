@@ -24,7 +24,17 @@
 
     <main>
       <header class="live-bar">
-        <a id="agentNumber" class="live-title" href="#" title="Call your agent">📞 <span id="agentNumberText">…</span></a>
+        <div class="agent-pick">
+          <a id="agentNumber" class="live-title" href="#" title="Call your agent">📞 <span id="agentNumberText">…</span></a>
+          <label class="agent-select-wrap">
+            <select id="agentSelect" class="agent-select" aria-label="Agent to call">
+              <option value="gpt-realtime-2.1">gpt-realtime-2.1</option>
+              <option value="gpt-live-1">gpt-live-1</option>
+              <option value="vapi">Vapi (gpt-realtime)</option>
+            </select>
+          </label>
+          <span id="agentHint" class="agent-hint"></span>
+        </div>
         <span class="live-status">
           <span id="callPill" class="call-pill idle">Idle</span>
           <span id="connDot" class="conn-dot reconnecting" title="stream">●</span>

@@ -50,6 +50,9 @@ import { createEventBus } from "./agent/event-bus.js";
 import { createCallStore } from "./agent/call-store.js";
 import { createAuth, loginPageHtml } from "./agent/auth.js";
 import { createOpenAiSip } from "./agent/openai-sip.js";
+import { createOpenAiLive } from "./agent/openai-live.js";
+import { createOpenAiWebhookRouter } from "./agent/openai-webhook-router.js";
+import { agentCatalog, createSettingsStore } from "./agent/settings-store.js";
 import {
   agentSafeX402,
   createSpongeMcpClient,
@@ -198,7 +201,25 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
     );
   }
 
-  // ── Phone transport B: OpenAI Realtime over SIP (direct; any model incl. gpt-live-1) ──
+  // ── Armed-agent settings (which OpenAI path answers the shared Telnyx number) ──
+  const settings = createSettingsStore({ dir: join(root, "runtime"), defaultSipAgent: config.openAiSipDefaultAgent });
+  const agentState = async () => ({
+    ...(await settings.get()),
+    agents: agentCatalog({ telnyxNumber: config.sipPhoneNumber, vapiNumber: config.vapiPhoneNumber }),
+  });
+  app.get("/api/agent", asyncRoute(async (_request, response) => response.json(await agentState())));
+  app.post("/api/agent", express.json({ limit: "10kb" }), asyncRoute(async (request, response) => {
+    try {
+      await settings.select(String(request.body?.agent ?? ""));
+      logEvent("agent.selected", await settings.get());
+      response.json(await agentState());
+    } catch (error) {
+      response.status(error.status || 500).json({ error: error.message });
+    }
+  }));
+
+  // ── Phone transport B: OpenAI over SIP (direct). Two agents share the Telnyx
+  //    number: gpt-realtime-2.1 (Realtime API) and gpt-live-1 (GPT-Live API). ──
   if (config.enableOpenAiSip) {
     // Tool definitions: static immediately, refreshed with live Coinbase MCP tools.
     let sipToolDefs = toolRegistry.staticDefinitions;
@@ -213,14 +234,47 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
       registry: toolRegistry,
       allowedCallers: config.allowedCallers,
       webhookSecret: config.openAiWebhookSecret,
+      ...(config.openAiSipTurnDetection ? { turnDetection: config.openAiSipTurnDetection } : {}),
+      ...(config.openAiSipTranscribeModel ? { inputTranscription: { model: config.openAiSipTranscribeModel } } : {}),
+      filler: config.openAiSipFiller,
       emit: emitEvent,
       onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
       log: (event, data) => logEvent(event, data),
     });
-    app.post("/openai/incoming-call", express.raw({ type: "*/*", limit: "1mb" }), (request, response) => {
-      logEvent("openai.webhook.hit", { bytes: request.body?.length ?? 0 });
-      return sip.handleIncomingCall(request, response);
+    // GPT-Live splits the prompt: a short voice-layer prompt (tone, interruptions,
+    // when to delegate) and the full agent prompt on the delegation backend (tools).
+    const liveVoiceInstructions = `You are the voice of a crypto research and trading agent on a live phone call.
+
+# Personality
+Calm, direct, brief. One or two short spoken sentences at a time. Never read raw JSON, IDs, or long lists aloud.
+
+# Backchannels
+Use brief listening sounds while the caller speaks. Do not talk over them.
+
+# Interruptions
+If the caller starts talking, stop speaking immediately and listen. "Stop" means stop talking; it does not cancel work already delegated.
+
+# Delegation
+Delegate to the backend whenever the caller asks for a price, chart, order book, balance, position, news, research, on-chain or prediction-market data, or wants to preview or place a trade. Never guess a number or claim an action finished before the backend reports it. While the backend works, say at most one short phrase, then wait for its result.`;
+    const live = createOpenAiLive({
+      apiKey: config.openAiApiKey,
+      backendModel: config.openAiLiveBackendModel,
+      voice: config.realtimeVoice,
+      voiceInstructions: liveVoiceInstructions,
+      backendInstructions: phoneInstructions,
+      getToolDefinitions: () => sipToolDefs,
+      registry: toolRegistry,
+      allowedCallers: config.allowedCallers,
+      emit: emitEvent,
+      onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
+      log: (event, data) => logEvent(event, data),
     });
+    app.post("/openai/incoming-call", express.raw({ type: "*/*", limit: "1mb" }), createOpenAiWebhookRouter({
+      secret: config.openAiWebhookSecret,
+      getArmedAgent: () => settings.activeSipAgent(),
+      sip, live,
+      log: (event, data) => logEvent(event, data),
+    }));
     // TeXML for the SIP trunk (Telnyx): dial the OpenAI SIP endpoint for our project,
     // preserving the caller's number as callerId so OpenAI's From header (and our
     // caller allowlist) sees the real caller. Point the Telnyx number's TeXML/Voice
@@ -233,13 +287,15 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
         `<?xml version="1.0" encoding="UTF-8"?><Response><Dial${callerId} answerOnBridge="true"><Sip>sip:${config.openAiProjectId}@sip.api.openai.com;transport=tls</Sip></Dial></Response>`,
       );
     });
-    logEvent("openai_sip.enabled", { model: config.openAiSipModel });
+    settings.ready.then(() => logEvent("openai_sip.enabled", { model: config.openAiSipModel, liveBackend: config.openAiLiveBackendModel, armed: settings.activeSipAgent() }));
   }
 
   // Dashboard config (behind the gate): the number to call.
-  app.get("/api/dashboard/config", (_request, response) => {
-    response.json({ phoneNumber: config.sipPhoneNumber || config.vapiPhoneNumber });
-  });
+  app.get("/api/dashboard/config", asyncRoute(async (_request, response) => {
+    const state = await agentState();
+    const selected = state.agents.find((a) => a.id === state.selectedAgent);
+    response.json({ phoneNumber: selected?.number || config.sipPhoneNumber || config.vapiPhoneNumber });
+  }));
 
   // Call history (auth wraps these in M7).
   app.get("/api/calls", asyncRoute(async (_request, response) => {

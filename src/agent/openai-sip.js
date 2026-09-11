@@ -14,11 +14,18 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { WebSocket } from "ws";
 
+import { createLatencyTracker } from "./latency.js";
+
 const OPENAI_API = "https://api.openai.com/v1";
 const REALTIME_WS = "wss://api.openai.com/v1/realtime";
 
 // Native barge-in tuned like the local app (this is the control Vapi didn't give us).
-const TURN_DETECTION = { type: "semantic_vad", eagerness: "medium", create_response: true, interrupt_response: true };
+// Eagerness "high" = decide the caller is done sooner (the main lever on the
+// command->reply gap). Overridable per deployment via `turnDetection`.
+export const DEFAULT_TURN_DETECTION = { type: "semantic_vad", eagerness: "high", create_response: true, interrupt_response: true };
+export const REALTIME_INCOMING_EVENT = "realtime.call.incoming";
+// Tools where a spoken filler would be wrong (the caller must hear the exact preview).
+const NO_FILLER_TOOLS = new Set(["preview_order", "execute_order"]);
 
 function safeEqual(a, b) {
   const left = Buffer.from(String(a ?? ""));
@@ -75,6 +82,9 @@ export function createOpenAiSip({
   apiKey, model, voice, instructions, getToolDefinitions,
   registry, allowedCallers = [], webhookSecret,
   greeting = "Hey — your trading agent here. What do you want to look at?",
+  turnDetection = DEFAULT_TURN_DETECTION,
+  inputTranscription = null, // e.g. { model: "gpt-4o-mini-transcribe" } — opt-in (a bad model name silently breaks session.update)
+  filler = false,            // off by default: latency is the goal, not masking it
   emit = () => {}, onCallEnd, log = () => {},
   fetchImpl = fetch, wsFactory,
 }) {
@@ -107,21 +117,25 @@ export function createOpenAiSip({
     }
     let event;
     try { event = JSON.parse(raw); } catch { response.status(400).json({ error: "bad json" }); return; }
-    if (event.type !== "realtime.call.incoming") { response.sendStatus(200); return; }
+    if (event.type !== REALTIME_INCOMING_EVENT) { response.sendStatus(200); return; }
+    response.sendStatus(200);
+    handleEvent(event);
+  }
 
+  /** Handle an already-verified, parsed `realtime.call.incoming` event (webhook already acked). */
+  function handleEvent(event) {
+    if (event?.type !== REALTIME_INCOMING_EVENT) return false;
     const callId = event.data?.call_id;
     const caller = callerFromSipHeaders(event.data?.sip_headers);
     log("openai.sip.incoming", { callId, caller, sipHeaders: event.data?.sip_headers });
     if (allowedCallers.length && !allowedCallers.includes(caller)) {
       log("openai.sip.rejected_allowlist", { callId, caller, allowed: allowedCallers });
       emit({ kind: "call", type: "rejected", callId, caller, at: Date.now() });
-      response.sendStatus(200);
       reject(callId).catch(() => {});
-      return;
+      return true;
     }
-    // Ack the webhook immediately so OpenAI doesn't retry (which spawns duplicate
-    // call_ids). Accept + attach the WS in the background.
-    response.sendStatus(200);
+    // The webhook was acked before this so OpenAI doesn't retry (which spawns
+    // duplicate call_ids). Accept + attach the WS in the background.
     (async () => {
       try {
         const acc = await accept(callId);
@@ -137,6 +151,7 @@ export function createOpenAiSip({
         emit({ kind: "error", callId, error: error.message, at: Date.now() });
       }
     })();
+    return true;
   }
 
   // Open the realtime control WebSocket and run the tool loop. `accept` returns 200
@@ -147,15 +162,18 @@ export function createOpenAiSip({
     // Only the Authorization header — adding OpenAI-Beta causes a 404 on the call WS.
     const headers = { Authorization: `Bearer ${apiKey}` };
     const ctx = { callId, channel: "phone", emit: (event) => emit({ callId, ...event }) };
+    const latency = createLatencyTracker({ callId, emit });
     const MAX_ATTEMPTS = 4;
     const RETRY_MS = 600;
     let finished = false;
+    let sawOutputThisTurn = false;
 
-    emit({ kind: "call", type: "incoming", callId, caller, at: Date.now() });
+    emit({ kind: "call", type: "incoming", callId, caller, agent: "gpt-realtime-2.1", at: Date.now() });
 
     const finish = async (reason) => {
       if (finished) return;
       finished = true;
+      latency.finish();
       emit({ kind: "end-of-call-report", callId, endedReason: reason, at: Date.now() });
       if (onCallEnd) await onCallEnd({ call: { id: callId }, endedReason: reason });
     };
@@ -177,7 +195,7 @@ export function createOpenAiSip({
             instructions,
             // GA shape: turn_detection under audio.input, voice under audio.output.
             audio: {
-              input: { turn_detection: TURN_DETECTION },
+              input: { turn_detection: turnDetection, ...(inputTranscription ? { transcription: inputTranscription } : {}) },
               output: { voice },
             },
             tools: (getToolDefinitions?.() || []).map(toOpenAiTool),
@@ -196,6 +214,12 @@ export function createOpenAiSip({
             let args = {};
             try { args = JSON.parse(msg.arguments || "{}"); } catch { args = {}; }
             emit({ kind: "tool", type: "start", callId, name: msg.name, at: Date.now() });
+            latency.toolStart(msg.name);
+            // Optional filler, fired in parallel with the tool (never before it, never
+            // for order tools). Off by default — see spec M5.
+            if (filler && !NO_FILLER_TOOLS.has(msg.name)) {
+              send({ type: "response.create", response: { instructions: "Say a two-or-three-word acknowledgement that you're on it. Nothing else." } });
+            }
             let output;
             try {
               const result = await registry.execute(msg.name, args, ctx);
@@ -205,10 +229,18 @@ export function createOpenAiSip({
               output = `Error: ${error.message}`;
               emit({ kind: "tool", type: "error", callId, name: msg.name, error: error.message, at: Date.now() });
             }
+            latency.toolDone(msg.name);
             send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: msg.call_id, output } });
             send({ type: "response.create" });
             break;
           }
+          case "input_audio_buffer.speech_stopped":
+            latency.speechEnd();
+            sawOutputThisTurn = false;
+            break;
+          case "response.output_audio.delta":
+            if (!sawOutputThisTurn) { sawOutputThisTurn = true; latency.firstOutput(); }
+            break;
           case "conversation.item.input_audio_transcription.completed":
             emit({ kind: "transcript", callId, role: "user", transcriptType: "final", text: msg.transcript || "", at: Date.now() });
             break;
@@ -240,5 +272,5 @@ export function createOpenAiSip({
     return { hangup: () => hangup(callId) };
   }
 
-  return { handleIncomingCall, accept, reject, hangup, connect, verifyWebhook: (h, b) => verifyWebhook(h, b, webhookSecret) };
+  return { handleIncomingCall, handleEvent, accept, reject, hangup, connect, verifyWebhook: (h, b) => verifyWebhook(h, b, webhookSecret) };
 }
