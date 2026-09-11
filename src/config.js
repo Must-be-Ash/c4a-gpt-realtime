@@ -30,6 +30,7 @@ export const config = {
   enableOpenAiSip: /^(1|true|yes)$/i.test(process.env.ENABLE_OPENAI_SIP ?? ""),
   openAiSipModel: process.env.OPENAI_SIP_MODEL ?? "gpt-realtime-2025-08-28",
   openAiWebhookSecret: process.env.OPENAI_WEBHOOK_SECRET ?? "",
+  openAiProjectId: process.env.OPENAI_PROJECT_ID ?? "",
   sipPhoneNumber: process.env.SIP_PHONE_NUMBER ?? "",
   dashboardPassword: process.env.DASHBOARD_PASSWORD ?? "",
   sessionSecret: process.env.SESSION_SECRET ?? "",

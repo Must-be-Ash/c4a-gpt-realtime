@@ -161,7 +161,7 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
   //    registry's own localhost fetches carry an internal token to pass. ──
   const auth = createAuth({ password: config.dashboardPassword, secret: config.sessionSecret });
   const OPEN_PATHS = new Set(["/healthz", "/login", "/", "/index.html", "/styles.css", "/landing.js", "/landing.css", "/og.png", "/favicon.ico", "/skill"]);
-  const isOpen = (path) => OPEN_PATHS.has(path) || path.startsWith("/vapi/") || path.startsWith("/openai/");
+  const isOpen = (path) => OPEN_PATHS.has(path) || path.startsWith("/vapi/") || path.startsWith("/openai/") || path.startsWith("/telnyx/");
   if (auth.enabled) {
     app.use((request, response, next) => {
       if (isOpen(request.path)) { next(); return; }
@@ -217,6 +217,13 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
       onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
     });
     app.post("/openai/incoming-call", express.raw({ type: "*/*", limit: "1mb" }), sip.handleIncomingCall);
+    // TeXML for the SIP trunk (Telnyx): dial the OpenAI SIP endpoint for our project.
+    // Point the Telnyx number's TeXML/Voice app at this URL — no manual SIP config.
+    app.get("/telnyx/texml", (_request, response) => {
+      response.type("application/xml").send(
+        `<?xml version="1.0" encoding="UTF-8"?><Response><Dial answerOnBridge="true"><Sip>sip:${config.openAiProjectId}@sip.api.openai.com;transport=tls</Sip></Dial></Response>`,
+      );
+    });
     logEvent("openai_sip.enabled", { model: config.openAiSipModel });
   }
 
