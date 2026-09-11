@@ -39,6 +39,17 @@
             <p class="dek">Voice-first agent that helps you research and make better informed trades at the speed of thought</p>
 
             <section class="prompt-block" aria-labelledby="prompt-label">
+              <div class="setup-picker" role="group" aria-label="Choose how to run it">
+                <div class="seg" role="radiogroup" aria-label="Where to run">
+                  <button type="button" class="seg-btn" data-mode="local" role="radio" aria-checked="false">Local</button>
+                  <button type="button" class="seg-btn" data-mode="web" role="radio" aria-checked="true">Web + phone</button>
+                </div>
+                <div class="seg" id="webSeg" role="radiogroup" aria-label="Phone provider">
+                  <button type="button" class="seg-btn" data-web="vapi" role="radio" aria-checked="true">Vapi</button>
+                  <button type="button" class="seg-btn" data-web="openai" role="radio" aria-checked="false">OpenAI direct</button>
+                </div>
+              </div>
+              <p id="setupHint" class="setup-hint"></p>
               <div class="prompt-card">
                 <code id="setupPrompt">Read https://coinbase-for-agents.vercel.app/skill and help me set up my own trading agent.</code>
                 <button id="copyPrompt" class="copy-button" type="button" aria-label="Copy setup prompt">
@@ -59,10 +70,10 @@
           <aside class="demo-frame" aria-label="Product demo">
             <div class="demo-frame-header">
               <span>Product demo</span>
-              <a href="https://www.youtube.com/watch?v=k0WlIw-uEJc" target="_blank" rel="noreferrer">Watch on YouTube <span aria-hidden="true">↗</span></a>
+              <a id="demoLink" href="https://www.youtube.com/watch?v=Olq0bqVwBgk" target="_blank" rel="noreferrer">Watch on YouTube <span aria-hidden="true">↗</span></a>
             </div>
             <div class="demo-video">
-              <iframe src="https://www.youtube-nocookie.com/embed/k0WlIw-uEJc?rel=0" title="Product demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+              <iframe id="demoFrame" src="https://www.youtube-nocookie.com/embed/Olq0bqVwBgk?rel=0" title="Product demo" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
             </div>
           </aside>
         </section>

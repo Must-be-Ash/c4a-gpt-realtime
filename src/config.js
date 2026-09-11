@@ -31,7 +31,7 @@ export const config = {
   enableOpenAiSip: /^(1|true|yes)$/i.test(process.env.ENABLE_OPENAI_SIP ?? ""),
   openAiSipModel: process.env.OPENAI_SIP_MODEL ?? "gpt-realtime-2.1",
   // Which OpenAI agent answers the Telnyx number when runtime/settings.json is absent.
-  openAiSipDefaultAgent: process.env.OPENAI_SIP_AGENT ?? "gpt-realtime-2.1",
+  openAiSipDefaultAgent: process.env.OPENAI_SIP_AGENT ?? "gpt-live-1",
   // gpt-live-1 (GPT-Live API) delegation backend model.
   openAiLiveBackendModel: process.env.OPENAI_LIVE_BACKEND_MODEL ?? "gpt-5.6-luna",
   openAiLiveReasoningEffort: process.env.OPENAI_LIVE_REASONING_EFFORT ?? "low",

@@ -163,7 +163,7 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
   //    the login page, the landing page, and login-page assets. The tool
   //    registry's own localhost fetches carry an internal token to pass. ──
   const auth = createAuth({ password: config.dashboardPassword, secret: config.sessionSecret });
-  const OPEN_PATHS = new Set(["/healthz", "/login", "/", "/index.html", "/styles.css", "/landing.js", "/landing.css", "/og.png", "/favicon.ico", "/skill"]);
+  const OPEN_PATHS = new Set(["/healthz", "/login", "/", "/index.html", "/styles.css", "/landing.js", "/landing.css", "/og.png", "/favicon.ico", "/skill", "/skill-web-vapi", "/skill-web-openai"]);
   const isOpen = (path) => OPEN_PATHS.has(path) || path.startsWith("/vapi/") || path.startsWith("/openai/") || path.startsWith("/telnyx/");
   if (auth.enabled) {
     app.use((request, response, next) => {
@@ -385,14 +385,16 @@ The backend is fast (usually under a second) and the caller sees results on a da
 
 app.use(express.json({ limit: "100kb" }));
 app.use("/reports", express.static(reportsDirectory));
-app.get("/skill", (_request, response) => {
-  response.set({
-    "cache-control": "public, max-age=300",
-    "content-type": "text/markdown; charset=utf-8",
-    "x-content-type-options": "nosniff",
+for (const skill of ["skill", "skill-web-vapi", "skill-web-openai"]) {
+  app.get(`/${skill}`, (_request, response) => {
+    response.set({
+      "cache-control": "public, max-age=300",
+      "content-type": "text/markdown; charset=utf-8",
+      "x-content-type-options": "nosniff",
+    });
+    response.sendFile(join(root, "public", skill));
   });
-  response.sendFile(join(root, "public", "skill"));
-});
+}
 app.use(express.static(join(root, "public")));
 
 

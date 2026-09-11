@@ -13,7 +13,17 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.match(page, /id="copyPrompt"/);
   assert.match(page, /class="wordmark"[^>]*>Voice first realtime trading agent/);
   assert.match(page, /class="github-icon"/);
-  assert.match(page, /youtube-nocookie\.com\/embed\/k0WlIw-uEJc/);
+  // Default selection is Web + phone via Vapi, whose demo is the web video; the
+  // local video is swapped in by landing.js when Local is selected.
+  assert.match(page, /youtube-nocookie\.com\/embed\/Olq0bqVwBgk/);
+  assert.match(page, /data-mode="local"/);
+  assert.match(page, /data-mode="web"[^>]*aria-checked="true"/);
+  assert.match(page, /data-web="vapi"[^>]*aria-checked="true"/);
+  assert.match(page, /data-web="openai"/);
+  assert.match(script, /k0WlIw-uEJc/);
+  assert.match(script, /"\/skill-web-vapi"/);
+  assert.match(script, /"\/skill-web-openai"/);
+  assert.match(script, /let mode = "web";\s*let web = "vapi";/);
   assert.match(page, /class="demo-frame"/);
   assert.ok(page.indexOf('class="prompt-block"') < page.indexOf('class="demo-frame"'));
   assert.match(page, /Paste this into Codex, Claude Code, Cursor/);
@@ -25,7 +35,7 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.doesNotMatch(page, /MIT licensed/);
   assert.doesNotMatch(page, /class="(?:mark|status-dot|capabilities|how-it-works|hero-links)"/);
   assert.equal((page.match(/Must-be-Ash\/c4a-gpt-realtime/g) ?? []).length, 1);
-  assert.match(script, /new URL\("\/skill", window\.location\.origin\)/);
+  assert.match(script, /new URL\(option\.skill, window\.location\.origin\)/);
   assert.match(script, /navigator\.clipboard\.writeText\(prompt\)/);
   assert.match(styles, /\.copy-button[\s\S]{0,500}border-radius:\s*50%/);
   assert.match(styles, /linear-gradient\(180deg, #b7bec8 0%, #d9dde3 100%\)/);
@@ -47,6 +57,26 @@ test("setup skill is published from the repository source", async () => {
   assert.match(source, /http:\/\/localhost:4173\/app\//);
   assert.match(source, /local project dependency/i);
   assert.doesNotMatch(source, /npm install --global @coinbase\/coinbase-cli/);
+});
+
+test("hosted setup skills are published and cover both phone paths", async () => {
+  for (const [name, target] of [["launch-web-vapi", "skill-web-vapi"], ["launch-web-openai", "skill-web-openai"]]) {
+    const [source, published] = await Promise.all([
+      readFile(new URL(`../skills/${name}/SKILL.md`, import.meta.url), "utf8"),
+      readFile(new URL(`../public/${target}`, import.meta.url), "utf8"),
+    ]);
+    assert.equal(published, source);
+    assert.match(source, /Never ask the user to paste any API key/);
+    assert.match(source, /fly deploy --remote-only/);
+    assert.match(source, /PHONE_NUMBER/);
+    assert.match(source, /Never (place|preview or execute) an order/);
+  }
+  const vapi = await readFile(new URL("../skills/launch-web-vapi/SKILL.md", import.meta.url), "utf8");
+  assert.match(vapi, /configure-vapi\.mjs/);
+  const openai = await readFile(new URL("../skills/launch-web-openai/SKILL.md", import.meta.url), "utf8");
+  assert.match(openai, /live\.transport\.incoming/);
+  assert.match(openai, /OPENAI_SIP_AGENT=gpt-live-1/);
+  assert.match(openai, /TeXML/);
 });
 
 test("the app pins the current Coinbase CLI instead of relying on a global install", async () => {

@@ -4,15 +4,15 @@ Your own low-latency voice research and trading agent. It uses OpenAI Realtime f
 
 ## Get started with your coding agent
 
-Paste this prompt into Codex, Claude Code, Cursor, or another coding agent:
+There are three ways to run it. Pick one, paste the matching prompt into Codex, Claude Code, Cursor, or another coding agent, and the agent walks you through accounts, API keys, verification, and (for the hosted paths) deployment. The landing page at [coinbase-for-agents.vercel.app](https://coinbase-for-agents.vercel.app) has a toggle that produces the right prompt and shows the matching demo.
 
-```text
-Read https://coinbase-for-agents.vercel.app/skill and help me set up my own Coinbase for Agents.
-```
+| Path | What you get | Prompt |
+|---|---|---|
+| **Local** | Voice agent in your browser on your laptop. | `Read https://coinbase-for-agents.vercel.app/skill and help me set up my own trading agent locally.` |
+| **Web + phone via Vapi** (fastest hosted) | A phone number you call from anywhere plus a private web dashboard. Vapi runs OpenAI Realtime on your key; Fly.io hosts the server. | `Read https://coinbase-for-agents.vercel.app/skill-web-vapi and help me deploy my own trading agent as a web dashboard with a phone number I can call, using Vapi.` |
+| **Web + phone via OpenAI direct** | Same dashboard, but the number connects straight to OpenAI over SIP (Telnyx). Switch between **gpt-live-1** and **gpt-realtime-2.1** from a dropdown on the dashboard. | `Read https://coinbase-for-agents.vercel.app/skill-web-openai and help me deploy my own trading agent as a web dashboard with a phone number that connects directly to OpenAI (gpt-live-1 or gpt-realtime-2.1 over SIP via Telnyx).` |
 
-The agent-guided flow forks or clones the repository, checks your machine, installs dependencies, walks you to each API-key dashboard, verifies the configuration without exposing secrets, and launches the app locally.
-
-Visit [coinbase-for-agents.vercel.app](https://coinbase-for-agents.vercel.app) for the minimal quickstart, or read the reusable [`launch-coinbase-for-agents`](skills/launch-coinbase-for-agents/SKILL.md) skill directly.
+The skills themselves live in [`skills/`](skills/): [`launch-coinbase-for-agents`](skills/launch-coinbase-for-agents/SKILL.md) (local), [`launch-web-vapi`](skills/launch-web-vapi/SKILL.md), and [`launch-web-openai`](skills/launch-web-openai/SKILL.md). Both hosted paths can coexist on one deployment; the dashboard dropdown shows the number to call for whichever agent you pick.
 
 All research, market data, balances, previews, and orders use live providers. The application contains no runtime mock-data mode.
 
@@ -86,49 +86,48 @@ These views are requested independently rather than bundled together. Example pr
 
 ## Hosted: web dashboard + phone (optional)
 
-The app can also run **hosted** so you can phone the agent and watch it from a browser without your laptop. This is an **additive** capability — local `npm run dev` is unchanged and works exactly as before.
+The app can also run **hosted** so you can phone the agent and watch it from a browser without your laptop. This is **additive**: local `npm run dev` is unchanged. Everything hosted is gated behind `ENABLE_WEB_PHONE=1`; with it unset none of it mounts.
 
-- **Phone:** [Vapi](https://vapi.ai) provides the number and runs OpenAI Realtime (speech-to-speech) using your **BYOK OpenAI key**. Tools are executed by *this* server via a single webhook (`POST /vapi/webhook`), reusing all the same `src/services/*`. Inbound is restricted to your caller ID (`PHONE_NUMBER`).
-- **Web:** a private, read-only dashboard at `/dashboard` (password via `DASHBOARD_PASSWORD`) shows the live call **artifacts-first** — the same charts/reports the local app renders (shared via `public/artifact-render.js`) — with the spoken words passing along the bottom as subtitles. Call history persists under `runtime/` and is replayable.
-- **Host:** [Fly.io](https://fly.io) (always-on machine; the webhook must not cold-start).
+- **Web:** a private dashboard at `/dashboard` (password via `DASHBOARD_PASSWORD`) shows the live call artifacts-first, the same charts and reports the local app renders, with the spoken words passing along the bottom as captions. Call history persists under `runtime/` and is replayable. A dropdown in the header picks which agent answers and shows the number to call.
+- **Host:** [Fly.io](https://fly.io), one always-on machine (the webhooks must not cold-start).
+- **Phone, two interchangeable paths:**
+  - **Vapi** (`ENABLE_WEB_PHONE=1` + `VAPI_*`): Vapi provides the number and runs OpenAI Realtime speech-to-speech on your BYOK OpenAI key. Tools are executed by this server via `POST /vapi/webhook`. Configure with `scripts/configure-vapi.mjs`, tune turn-taking with `scripts/tune-vapi.mjs`. Vapi only allows models on its list (`gpt-realtime-2025-08-28`).
+  - **OpenAI direct over SIP** (`ENABLE_OPENAI_SIP=1` + `OPENAI_PROJECT_ID`, `OPENAI_WEBHOOK_SECRET`, `SIP_PHONE_NUMBER`): a Telnyx number dials `sip:<project>@sip.api.openai.com` and OpenAI calls back `POST /openai/incoming-call`. Two agents share the number and the dashboard dropdown arms one: **gpt-live-1** (OpenAI's GPT-Live API, full duplex, delegation backend `OPENAI_LIVE_BACKEND_MODEL`) or **gpt-realtime-2.1** (Realtime API). The choice persists in `runtime/settings.json`.
 
-Everything hosted is gated behind `ENABLE_WEB_PHONE=1`; with it unset (the default), none of it mounts.
+Inbound calls on every path are restricted to your caller ID (`PHONE_NUMBER`).
 
 ### Deploy (Fly)
 
 ```bash
-# one-time: create the app + volume, then stage secrets (see .env.example for the full list)
 fly apps create <app>
 fly volumes create data --size 1 --region <region> -a <app>
-fly secrets import -a <app> < your-secrets.env   # provider keys + VAPI_* + DASHBOARD_PASSWORD + SESSION_SECRET + VAPI_WEBHOOK_SECRET + ENABLE_WEB_PHONE=1 + PUBLIC_BASE_URL
-# AgentCash wallet (needed for paid endpoints) — stage the wallet files as base64:
-#   AGENTCASH_WALLET_JSON_B64, AGENTCASH_SOLANA_WALLET_JSON_B64, AGENTCASH_STATE_JSON_B64
+fly secrets import -a <app> < .env      # see .env.example for the hosted blocks
 fly deploy --remote-only --ha=false -a <app>
 ```
 
-The container entrypoint (`scripts/docker-entrypoint.sh`) writes the AgentCash wallet from those secrets into `~/.agentcash/` at boot.
+For paid data, stage the AgentCash wallet as base64 secrets (`AGENTCASH_WALLET_JSON_B64`, `AGENTCASH_SOLANA_WALLET_JSON_B64`, `AGENTCASH_STATE_JSON_B64`); `scripts/docker-entrypoint.sh` writes them into `~/.agentcash/` at boot.
 
 ### Wire up Vapi
 
-1. In the Vapi dashboard → **Integrations → Model Providers → OpenAI**, add your OpenAI API key (BYOK). Realtime billing then runs on your OpenAI account.
-2. Point the assistant + phone number at the deployed webhook:
+1. Vapi dashboard → **Integrations → Model Providers → OpenAI**: add your OpenAI key (BYOK).
+2. Buy a number, create an empty assistant, put `VAPI_PRIVATE_KEY`, `VAPI_AGENT_ID`, `VAPI_PHONE_NUMBER` in `.env`, then:
 
 ```bash
-# enumerate tools from a local (unauthenticated) server so Coinbase MCP tools are included,
-# while the tools' webhook points at production:
-PORT=4173 ENABLE_WEB_PHONE=1 node src/server.js &          # local, no password → no auth
-PUBLIC_BASE_URL="https://<app>.fly.dev" \
-VAPI_WEBHOOK_SECRET="<same as Fly>" \
-TOOLS_BASE_URL="http://127.0.0.1:4173" \
-OPENAI_REALTIME_MODEL="gpt-realtime-2025-08-28" \
-node scripts/configure-vapi.mjs        # add --dry-run to preview without calling Vapi
+PORT=4173 ENABLE_WEB_PHONE=1 node src/server.js &       # local, unauthenticated: tools enumerate here
+TOOLS_BASE_URL="http://127.0.0.1:4173" node scripts/configure-vapi.mjs   # --dry-run to preview
+node scripts/tune-vapi.mjs
 ```
 
-Notes: Vapi's realtime model name is `gpt-realtime-2025-08-28` (not the local `gpt-realtime-2.1`); realtime voices are `alloy/echo/shimmer/marin/cedar`. Then **call your Vapi number from your allowlisted phone**.
+### Wire up OpenAI direct (Telnyx)
+
+1. OpenAI platform → project **Webhooks**: endpoint `https://<app>.fly.dev/openai/incoming-call`, events `realtime.call.incoming` **and** `live.transport.incoming` (one call emits both; the server acts on the armed one). Secret → `OPENAI_WEBHOOK_SECRET`.
+2. Telnyx: buy a number → `SIP_PHONE_NUMBER`; create an **Outbound Voice Profile**; create a **TeXML Application** with voice URL `https://<app>.fly.dev/telnyx/texml` and that profile attached; assign the number to it. The server returns the `<Dial><Sip>` TeXML (adding `;secure=srtp` when gpt-live-1 is armed, since GPT-Live requires SRTP).
+
+The full step-by-step, including diagnostics, is in the two hosted skills.
 
 ### Costs
 
-Vapi per-minute + OpenAI realtime tokens (on your key) + the Fly machine + any AgentCash paid data calls.
+Fly machine + the phone provider (Vapi per-minute, or Telnyx number + per-minute) + OpenAI (realtime tokens, or gpt-live-1 at $0.05/min plus backend tokens) + any AgentCash paid data.
 
 ## Checks
 
