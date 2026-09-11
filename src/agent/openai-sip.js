@@ -127,13 +127,13 @@ export function createOpenAiSip({
     }
     try {
       const acc = await accept(callId);
+      const body = await acc.text().catch(() => "");
       if (!acc.ok) {
-        const body = await acc.text().catch(() => "");
-        log("openai.sip.accept_failed", { callId, status: acc.status, body: body.slice(0, 400) });
+        log("openai.sip.accept_failed", { callId, status: acc.status, body: body.slice(0, 500) });
         response.sendStatus(200);
         return;
       }
-      log("openai.sip.accepted", { callId, caller, model });
+      log("openai.sip.accepted", { callId, caller, model, body: body.slice(0, 500) });
       response.sendStatus(200);
       connect(callId, caller); // manage the session (tools + transcripts) in the background
     } catch (error) {
@@ -143,77 +143,100 @@ export function createOpenAiSip({
     }
   }
 
-  // Open the realtime control WebSocket and run the tool loop.
+  // Open the realtime control WebSocket and run the tool loop. `accept` returns 200
+  // while the session is still "being established", so the call WS can 404 for a
+  // moment right after — we retry with short backoff until it attaches.
   function connect(callId, caller) {
     const url = `${REALTIME_WS}?call_id=${encodeURIComponent(callId)}`;
     // Only the Authorization header — adding OpenAI-Beta causes a 404 on the call WS.
     const headers = { Authorization: `Bearer ${apiKey}` };
-    // Must use the `ws` package (not Node's global WebSocket) — OpenAI needs the
-    // Authorization header, which the browser-spec WebSocket constructor can't set.
-    const ws = wsFactory ? wsFactory(url, { headers }) : new WebSocket(url, { headers });
-    const ctx = { callId, channel: "phone", emit: (e) => emit({ callId, ...e }) };
-    const send = (obj) => { try { ws.send(JSON.stringify(obj)); } catch { /* socket gone */ } };
+    const ctx = { callId, channel: "phone", emit: (event) => emit({ callId, ...event }) };
+    const MAX_ATTEMPTS = 10;
+    const RETRY_MS = 400;
+    let finished = false;
 
     emit({ kind: "call", type: "incoming", callId, caller, at: Date.now() });
 
-    ws.onopen = () => {
-      send({
-        type: "session.update",
-        session: {
-          instructions,
-          tools: (getToolDefinitions?.() || []).map(toOpenAiTool),
-          turn_detection: TURN_DETECTION,
-        },
-      });
-      log("openai.sip.ws_open", { callId });
-      // Answer proactively with a short greeting.
-      if (greeting) send({ type: "response.create", response: { instructions: `Greet the caller in one short sentence: "${greeting}"` } });
-      emit({ kind: "status-update", callId, status: "in-progress", at: Date.now() });
-    };
-
-    ws.onmessage = async (raw) => {
-      let msg;
-      try { msg = JSON.parse(typeof raw === "string" ? raw : raw.data); } catch { return; }
-      switch (msg.type) {
-        case "response.function_call_arguments.done": {
-          let args = {};
-          try { args = JSON.parse(msg.arguments || "{}"); } catch { args = {}; }
-          emit({ kind: "tool", type: "start", callId, name: msg.name, at: Date.now() });
-          let output;
-          try {
-            const result = await registry.execute(msg.name, args, ctx);
-            output = typeof result === "string" ? result : JSON.stringify(result);
-            emit({ kind: "tool", type: "done", callId, name: msg.name, at: Date.now() });
-          } catch (error) {
-            output = `Error: ${error.message}`;
-            emit({ kind: "tool", type: "error", callId, name: msg.name, error: error.message, at: Date.now() });
-          }
-          send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: msg.call_id, output } });
-          send({ type: "response.create" });
-          break;
-        }
-        case "conversation.item.input_audio_transcription.completed":
-          emit({ kind: "transcript", callId, role: "user", transcriptType: "final", text: msg.transcript || "", at: Date.now() });
-          break;
-        case "response.output_audio_transcript.done":
-          emit({ kind: "transcript", callId, role: "assistant", transcriptType: "final", text: msg.transcript || "", at: Date.now() });
-          break;
-        case "error":
-          emit({ kind: "error", callId, error: msg.error?.message || "realtime error", at: Date.now() });
-          break;
-        default:
-          break;
-      }
-    };
-
     const finish = async (reason) => {
+      if (finished) return;
+      finished = true;
       emit({ kind: "end-of-call-report", callId, endedReason: reason, at: Date.now() });
       if (onCallEnd) await onCallEnd({ call: { id: callId }, endedReason: reason });
     };
-    ws.onclose = () => { log("openai.sip.ws_close", { callId }); finish("call-ended"); };
-    ws.onerror = (event) => { log("openai.sip.ws_error", { callId, error: event?.message || "ws error" }); emit({ kind: "error", callId, error: event?.message || "ws error", at: Date.now() }); };
 
-    return { ws, hangup: () => hangup(callId) };
+    const attempt = (n) => {
+      // Must use the `ws` package (not Node's global WebSocket) — OpenAI needs the
+      // Authorization header, which the browser-spec WebSocket constructor can't set.
+      const ws = wsFactory ? wsFactory(url, { headers }) : new WebSocket(url, { headers });
+      const send = (obj) => { try { ws.send(JSON.stringify(obj)); } catch { /* socket gone */ } };
+      let opened = false;
+
+      ws.onopen = () => {
+        opened = true;
+        log("openai.sip.ws_open", { callId, attempt: n });
+        send({
+          type: "session.update",
+          session: {
+            instructions,
+            tools: (getToolDefinitions?.() || []).map(toOpenAiTool),
+            turn_detection: TURN_DETECTION,
+          },
+        });
+        // Answer proactively with a short greeting.
+        if (greeting) send({ type: "response.create", response: { instructions: `Greet the caller in one short sentence: "${greeting}"` } });
+        emit({ kind: "status-update", callId, status: "in-progress", at: Date.now() });
+      };
+
+      ws.onmessage = async (raw) => {
+        let msg;
+        try { msg = JSON.parse(typeof raw === "string" ? raw : raw.data); } catch { return; }
+        switch (msg.type) {
+          case "response.function_call_arguments.done": {
+            let args = {};
+            try { args = JSON.parse(msg.arguments || "{}"); } catch { args = {}; }
+            emit({ kind: "tool", type: "start", callId, name: msg.name, at: Date.now() });
+            let output;
+            try {
+              const result = await registry.execute(msg.name, args, ctx);
+              output = typeof result === "string" ? result : JSON.stringify(result);
+              emit({ kind: "tool", type: "done", callId, name: msg.name, at: Date.now() });
+            } catch (error) {
+              output = `Error: ${error.message}`;
+              emit({ kind: "tool", type: "error", callId, name: msg.name, error: error.message, at: Date.now() });
+            }
+            send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: msg.call_id, output } });
+            send({ type: "response.create" });
+            break;
+          }
+          case "conversation.item.input_audio_transcription.completed":
+            emit({ kind: "transcript", callId, role: "user", transcriptType: "final", text: msg.transcript || "", at: Date.now() });
+            break;
+          case "response.output_audio_transcript.done":
+            emit({ kind: "transcript", callId, role: "assistant", transcriptType: "final", text: msg.transcript || "", at: Date.now() });
+            break;
+          case "error":
+            emit({ kind: "error", callId, error: msg.error?.message || "realtime error", at: Date.now() });
+            break;
+          default:
+            break;
+        }
+      };
+
+      ws.onerror = (event) => { log("openai.sip.ws_error", { callId, attempt: n, error: event?.message || "ws error" }); };
+
+      ws.onclose = () => {
+        if (!opened && n < MAX_ATTEMPTS && !finished) {
+          log("openai.sip.ws_retry", { callId, next: n + 1 });
+          setTimeout(() => attempt(n + 1), RETRY_MS);
+          return;
+        }
+        if (opened) { log("openai.sip.ws_close", { callId }); finish("call-ended"); }
+        else { log("openai.sip.ws_giveup", { callId, attempts: n }); finish("ws-connect-failed"); }
+      };
+    };
+
+    attempt(1);
+    return { hangup: () => hangup(callId) };
   }
 
   return { handleIncomingCall, accept, reject, hangup, connect, verifyWebhook: (h, b) => verifyWebhook(h, b, webhookSecret) };
