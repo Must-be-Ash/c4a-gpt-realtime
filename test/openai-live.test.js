@@ -93,16 +93,22 @@ test("buffers transcript deltas into final captions and finalizes on session.clo
   live.connect("live_4", "+1");
   const ws = h._ws;
   ws.onopen();
+  // Real contract: deltas only, no done events. User flushes when the backend is
+  // delegated; assistant flushes when the caller speaks again or on session close.
   await ws.onmessage(JSON.stringify({ type: "session.input_transcript.delta", delta: "show me " }));
-  await ws.onmessage(JSON.stringify({ type: "session.input_transcript.done", delta: "bitcoin" }));
+  await ws.onmessage(JSON.stringify({ type: "session.input_transcript.delta", delta: "bitcoin" }));
+  await ws.onmessage(JSON.stringify({ type: "session.delegation.created", delegation: { id: "dlg_1" } }));
   await ws.onmessage(JSON.stringify({ type: "session.output_transcript.delta", delta: "Pulling " }));
-  await ws.onmessage(JSON.stringify({ type: "session.output_transcript.done", delta: "it up." }));
+  await ws.onmessage(JSON.stringify({ type: "session.output_transcript.delta", delta: "it up." }));
+  await ws.onmessage(JSON.stringify({ type: "session.input_transcript.delta", delta: "thanks" }));
   const user = h.emitted.find((e) => e.kind === "transcript" && e.role === "user");
   const bot = h.emitted.find((e) => e.kind === "transcript" && e.role === "assistant");
   assert.equal(user.text, "show me bitcoin");
   assert.equal(bot.text, "Pulling it up.");
   assert.ok(h.emitted.some((e) => e.kind === "latency" && e.type === "turn"), "measured the reply gap");
+  assert.ok(h.emitted.some((e) => e.kind === "delegation" && e.delegationId === "dlg_1"));
   await ws.onmessage(JSON.stringify({ type: "session.closed", reason: "remote_hangup" }));
+  assert.ok(h.emitted.filter((e) => e.kind === "transcript" && e.role === "user").some((e) => e.text === "thanks"), "trailing user text flushed on close");
   assert.equal(ended.endedReason, "remote_hangup");
   assert.ok(h.emitted.some((e) => e.kind === "latency" && e.type === "summary"));
 });

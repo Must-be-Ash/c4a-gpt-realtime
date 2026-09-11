@@ -171,12 +171,20 @@ export function createOpenAiLive({
         emit({ kind: "status-update", callId, status: "in-progress", at: Date.now() });
       };
 
+      // GPT-Live emits transcripts as deltas only (no done event — verified on a real
+      // call), so captions are flushed on a short quiet gap or when the other party
+      // starts talking / the backend is delegated.
+      const FLUSH_MS = 700;
+      let userTimer = null;
+      let assistantTimer = null;
       const flushUser = () => {
+        if (userTimer) { clearTimeout(userTimer); userTimer = null; }
         const text = userBuffer.trim();
         userBuffer = "";
-        if (text) emit({ kind: "transcript", callId, role: "user", transcriptType: "final", text, at: Date.now() });
+        if (text) { emit({ kind: "transcript", callId, role: "user", transcriptType: "final", text, at: Date.now() }); latency.speechEnd(); }
       };
       const flushAssistant = () => {
+        if (assistantTimer) { clearTimeout(assistantTimer); assistantTimer = null; }
         const text = assistantBuffer.trim();
         assistantBuffer = "";
         if (text) emit({ kind: "transcript", callId, role: "assistant", transcriptType: "final", text, at: Date.now() });
@@ -233,16 +241,24 @@ export function createOpenAiLive({
           return;
         }
         if (type.startsWith("session.input_transcript")) {
-          if (type.endsWith(".delta")) { userBuffer += msg.delta || ""; return; }
+          if (type.endsWith(".delta")) {
+            if (assistantBuffer) flushAssistant(); // caller started talking -> assistant turn is over
+            userBuffer += msg.delta || "";
+            if (userTimer) clearTimeout(userTimer);
+            userTimer = setTimeout(flushUser, FLUSH_MS);
+            return;
+          }
           if (msg.transcript) userBuffer = msg.transcript; else userBuffer += msg.delta || "";
           flushUser();
-          latency.speechEnd();
           return;
         }
         if (type.startsWith("session.output_transcript")) {
           if (type.endsWith(".delta")) {
+            if (userBuffer) flushUser(); // assistant replying -> caller turn is over
             if (!assistantBuffer) latency.firstOutput();
             assistantBuffer += msg.delta || "";
+            if (assistantTimer) clearTimeout(assistantTimer);
+            assistantTimer = setTimeout(flushAssistant, FLUSH_MS);
             return;
           }
           if (msg.transcript) assistantBuffer = msg.transcript; else assistantBuffer += msg.delta || "";
@@ -250,6 +266,11 @@ export function createOpenAiLive({
           return;
         }
         switch (type) {
+          case "session.delegation.created":
+            // The voice model handed the request to the backend: the caller's command is complete.
+            if (userBuffer) flushUser();
+            emit({ kind: "delegation", callId, delegationId: msg.delegation?.id || null, at: Date.now() });
+            break;
           case "session.output_audio.delta":
             latency.firstOutput();
             break;
