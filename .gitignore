@@ -20,3 +20,4 @@ solana-wallet.json
 *.key
 dashboard/dashboard.bundle.js
 node_modules
+.claude/
