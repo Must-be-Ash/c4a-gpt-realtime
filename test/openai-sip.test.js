@@ -52,14 +52,20 @@ test("accepts an allowlisted caller and connects; rejects others", async () => {
   const okRes = fakeRes();
   await sip.handleIncomingCall({ headers: signHeaders(okBody), body: Buffer.from(okBody) }, okRes);
   assert.equal(okRes.sent, 200);
-  assert.ok(calls.some((c) => c.url.endsWith("/accept")), "accepted the call");
-  assert.ok(calls.find((c) => c.url.endsWith("/accept")).body.tools.length === 1, "sent tools in session");
-  assert.equal(calls.find((c) => c.url.endsWith("/accept")).body.turn_detection.type, "semantic_vad");
+  await new Promise((r) => setTimeout(r, 20)); // accept runs in the background after the 200 ack
+  const acceptBody = calls.find((c) => c.url.endsWith("/accept"))?.body;
+  assert.ok(acceptBody, "accepted the call");
+  assert.equal(acceptBody.type, "realtime");
+  assert.equal(acceptBody.model, "gpt-realtime-2025-08-28");
+  assert.ok(acceptBody.instructions, "accept includes instructions");
+  // tools/turn_detection are applied over the WS session.update, not the accept body.
+  assert.equal(acceptBody.tools, undefined);
 
   const badBody = incoming("+19998887777");
   const badRes = fakeRes();
   await sip.handleIncomingCall({ headers: signHeaders(badBody), body: Buffer.from(badBody) }, badRes);
   assert.equal(badRes.sent, 200);
+  await new Promise((r) => setTimeout(r, 20));
   assert.ok(calls.some((c) => c.url.endsWith("/reject")), "rejected the disallowed caller");
   assert.ok(emitted.some((e) => e.kind === "call" && e.type === "rejected"));
 });
