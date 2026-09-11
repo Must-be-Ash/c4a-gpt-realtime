@@ -153,8 +153,8 @@ export function createOpenAiSip({
     // Only the Authorization header — adding OpenAI-Beta causes a 404 on the call WS.
     const headers = { Authorization: `Bearer ${apiKey}` };
     const ctx = { callId, channel: "phone", emit: (event) => emit({ callId, ...event }) };
-    const MAX_ATTEMPTS = 10;
-    const RETRY_MS = 400;
+    const MAX_ATTEMPTS = 4;
+    const RETRY_MS = 600;
     let finished = false;
 
     emit({ kind: "call", type: "incoming", callId, caller, at: Date.now() });
