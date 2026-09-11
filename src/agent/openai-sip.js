@@ -146,7 +146,8 @@ export function createOpenAiSip({
   // Open the realtime control WebSocket and run the tool loop.
   function connect(callId, caller) {
     const url = `${REALTIME_WS}?call_id=${encodeURIComponent(callId)}`;
-    const headers = { Authorization: `Bearer ${apiKey}`, "OpenAI-Beta": "realtime=v1" };
+    // Only the Authorization header — adding OpenAI-Beta causes a 404 on the call WS.
+    const headers = { Authorization: `Bearer ${apiKey}` };
     // Must use the `ws` package (not Node's global WebSocket) — OpenAI needs the
     // Authorization header, which the browser-spec WebSocket constructor can't set.
     const ws = wsFactory ? wsFactory(url, { headers }) : new WebSocket(url, { headers });
