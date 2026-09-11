@@ -75,7 +75,7 @@ export function createOpenAiSip({
   apiKey, model, voice, instructions, getToolDefinitions,
   registry, allowedCallers = [], webhookSecret,
   greeting = "Hey — your trading agent here. What do you want to look at?",
-  emit = () => {}, onCallEnd,
+  emit = () => {}, onCallEnd, log = () => {},
   fetchImpl = fetch, wsFactory,
 }) {
   if (!registry?.execute) throw new Error("createOpenAiSip requires a registry with execute().");
@@ -117,17 +117,27 @@ export function createOpenAiSip({
 
     const callId = event.data?.call_id;
     const caller = callerFromSipHeaders(event.data?.sip_headers);
+    log("openai.sip.incoming", { callId, caller, sipHeaders: event.data?.sip_headers });
     if (allowedCallers.length && !allowedCallers.includes(caller)) {
+      log("openai.sip.rejected_allowlist", { callId, caller, allowed: allowedCallers });
       emit({ kind: "call", type: "rejected", callId, caller, at: Date.now() });
       await reject(callId).catch(() => {});
       response.sendStatus(200);
       return;
     }
     try {
-      await accept(callId);
+      const acc = await accept(callId);
+      if (!acc.ok) {
+        const body = await acc.text().catch(() => "");
+        log("openai.sip.accept_failed", { callId, status: acc.status, body: body.slice(0, 400) });
+        response.sendStatus(200);
+        return;
+      }
+      log("openai.sip.accepted", { callId, caller, model });
       response.sendStatus(200);
       connect(callId, caller); // manage the session (tools + transcripts) in the background
     } catch (error) {
+      log("openai.sip.accept_error", { callId, error: error.message });
       emit({ kind: "error", callId, error: error.message, at: Date.now() });
       response.status(502).json({ error: error.message });
     }
@@ -154,6 +164,7 @@ export function createOpenAiSip({
           turn_detection: TURN_DETECTION,
         },
       });
+      log("openai.sip.ws_open", { callId });
       // Answer proactively with a short greeting.
       if (greeting) send({ type: "response.create", response: { instructions: `Greet the caller in one short sentence: "${greeting}"` } });
       emit({ kind: "status-update", callId, status: "in-progress", at: Date.now() });
@@ -198,8 +209,8 @@ export function createOpenAiSip({
       emit({ kind: "end-of-call-report", callId, endedReason: reason, at: Date.now() });
       if (onCallEnd) await onCallEnd({ call: { id: callId }, endedReason: reason });
     };
-    ws.onclose = () => finish("call-ended");
-    ws.onerror = (event) => emit({ kind: "error", callId, error: event?.message || "ws error", at: Date.now() });
+    ws.onclose = () => { log("openai.sip.ws_close", { callId }); finish("call-ended"); };
+    ws.onerror = (event) => { log("openai.sip.ws_error", { callId, error: event?.message || "ws error" }); emit({ kind: "error", callId, error: event?.message || "ws error", at: Date.now() }); };
 
     return { ws, hangup: () => hangup(callId) };
   }
