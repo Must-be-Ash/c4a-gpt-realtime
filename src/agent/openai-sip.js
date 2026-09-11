@@ -173,6 +173,7 @@ export function createOpenAiSip({
         send({
           type: "session.update",
           session: {
+            type: "realtime", // required — without it the whole session.update is rejected
             instructions,
             audio: { output: { voice } },
             tools: (getToolDefinitions?.() || []).map(toOpenAiTool),

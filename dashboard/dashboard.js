@@ -42,6 +42,7 @@ elements.themeToggle.addEventListener("click", () => {
 function setCall(state, label) {
   elements.callPill.className = `call-pill ${state}`;
   elements.callPill.textContent = label;
+  if (state === "incoming" || state === "active") elements.idleNote.hidden = true;
 }
 
 // ── Artifact feed ──
@@ -121,6 +122,7 @@ let captionTimer = null;
 function showCaption(role, text) {
   const windowed = captionWindow(String(text || ""));
   if (!windowed) return;
+  elements.idleNote.hidden = true;
   const who = role === "user" ? "user" : "model";
   elements.captions.replaceChildren();
   const caption = append(elements.captions, "div", `caption caption-${who}`);
