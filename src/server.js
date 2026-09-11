@@ -49,6 +49,7 @@ import { createVapiWebhook } from "./agent/vapi-webhook.js";
 import { createEventBus } from "./agent/event-bus.js";
 import { createCallStore } from "./agent/call-store.js";
 import { createAuth, loginPageHtml } from "./agent/auth.js";
+import { createOpenAiSip } from "./agent/openai-sip.js";
 import {
   agentSafeX402,
   createSpongeMcpClient,
@@ -154,13 +155,13 @@ const asyncRoute = (handler) => async (request, response, next) => {
 
 // ── Hosted phone capability (additive; off unless ENABLE_WEB_PHONE). Mounted
 //    before the global 100kb JSON parser so Vapi payloads get their own limit. ──
-if (config.enableWebPhone) {
-  // ── Private access: gate the app behind a password, EXCEPT the phone webhook,
+if (config.enableWebPhone || config.enableOpenAiSip) {
+  // ── Private access: gate the app behind a password, EXCEPT the phone webhooks,
   //    the login page, the landing page, and login-page assets. The tool
   //    registry's own localhost fetches carry an internal token to pass. ──
   const auth = createAuth({ password: config.dashboardPassword, secret: config.sessionSecret });
   const OPEN_PATHS = new Set(["/healthz", "/login", "/", "/index.html", "/styles.css", "/landing.js", "/landing.css", "/og.png", "/favicon.ico", "/skill"]);
-  const isOpen = (path) => OPEN_PATHS.has(path) || path.startsWith("/vapi/");
+  const isOpen = (path) => OPEN_PATHS.has(path) || path.startsWith("/vapi/") || path.startsWith("/openai/");
   if (auth.enabled) {
     app.use((request, response, next) => {
       if (isOpen(request.path)) { next(); return; }
@@ -181,22 +182,47 @@ if (config.enableWebPhone) {
     callStore.record(event).catch(() => { /* history is best-effort */ });
   };
 
-  app.post(
-    "/vapi/webhook",
-    express.json({ limit: "5mb" }),
-    createVapiWebhook({
+  // ── Phone transport A: Vapi (managed OpenAI Realtime; limited to Vapi's model list) ──
+  if (config.enableWebPhone) {
+    app.post(
+      "/vapi/webhook",
+      express.json({ limit: "5mb" }),
+      createVapiWebhook({
+        registry: toolRegistry,
+        secret: config.vapiWebhookSecret,
+        allowedCallers: config.allowedCallers,
+        assistantId: config.vapiAgentId,
+        emit: emitEvent,
+        onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
+      }),
+    );
+  }
+
+  // ── Phone transport B: OpenAI Realtime over SIP (direct; any model incl. gpt-live-1) ──
+  if (config.enableOpenAiSip) {
+    // Tool definitions: static immediately, refreshed with live Coinbase MCP tools.
+    let sipToolDefs = toolRegistry.staticDefinitions;
+    toolRegistry.listDefinitions().then((defs) => { sipToolDefs = defs; }).catch(() => {});
+    const phoneInstructions = `${agentInstructions}\n\n## Phone-call style (voice)\nYou are on a live phone call. Keep replies short and spoken. Never read raw JSON, IDs, or long lists aloud; summarize. Charts and reports appear on the caller's dashboard, so briefly acknowledge show_/present tools. Before any trade you MUST call preview_order, read the exact preview back, and get an explicit spoken confirmation before execute_order.`;
+    const sip = createOpenAiSip({
+      apiKey: config.openAiApiKey,
+      model: config.openAiSipModel,
+      voice: config.realtimeVoice,
+      instructions: phoneInstructions,
+      getToolDefinitions: () => sipToolDefs,
       registry: toolRegistry,
-      secret: config.vapiWebhookSecret,
       allowedCallers: config.allowedCallers,
-      assistantId: config.vapiAgentId,
+      webhookSecret: config.openAiWebhookSecret,
       emit: emitEvent,
       onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
-    }),
-  );
+    });
+    app.post("/openai/incoming-call", express.raw({ type: "*/*", limit: "1mb" }), sip.handleIncomingCall);
+    logEvent("openai_sip.enabled", { model: config.openAiSipModel });
+  }
 
   // Dashboard config (behind the gate): the number to call.
   app.get("/api/dashboard/config", (_request, response) => {
-    response.json({ phoneNumber: config.vapiPhoneNumber });
+    response.json({ phoneNumber: config.sipPhoneNumber || config.vapiPhoneNumber });
   });
 
   // Call history (auth wraps these in M7).

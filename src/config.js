@@ -26,6 +26,11 @@ export const config = {
   vapiWebhookSecret: process.env.VAPI_WEBHOOK_SECRET ?? "",
   vapiAgentId: process.env.VAPI_AGENT_ID ?? "",
   vapiPhoneNumber: process.env.VAPI_PHONE_NUMBER ?? "",
+  // Direct OpenAI Realtime over SIP (no Vapi) — pick any realtime model incl. gpt-live-1.
+  enableOpenAiSip: /^(1|true|yes)$/i.test(process.env.ENABLE_OPENAI_SIP ?? ""),
+  openAiSipModel: process.env.OPENAI_SIP_MODEL ?? "gpt-realtime-2025-08-28",
+  openAiWebhookSecret: process.env.OPENAI_WEBHOOK_SECRET ?? "",
+  sipPhoneNumber: process.env.SIP_PHONE_NUMBER ?? "",
   dashboardPassword: process.env.DASHBOARD_PASSWORD ?? "",
   sessionSecret: process.env.SESSION_SECRET ?? "",
   allowedCallers: (process.env.PHONE_NUMBER ?? "")
