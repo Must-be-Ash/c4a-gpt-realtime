@@ -175,9 +175,12 @@ export function createOpenAiSip({
           session: {
             type: "realtime", // required — without it the whole session.update is rejected
             instructions,
-            audio: { output: { voice } },
+            // GA shape: turn_detection under audio.input, voice under audio.output.
+            audio: {
+              input: { turn_detection: TURN_DETECTION },
+              output: { voice },
+            },
             tools: (getToolDefinitions?.() || []).map(toOpenAiTool),
-            turn_detection: TURN_DETECTION,
           },
         });
         // Answer proactively with a short greeting.
