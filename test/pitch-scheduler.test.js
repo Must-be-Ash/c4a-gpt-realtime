@@ -89,6 +89,17 @@ test("never pitches the same desk position twice, and respects spacing", async (
   } finally { await s.cleanup(); }
 });
 
+test("Pitch me now can re-pitch the same idea (spacing and dedupe are for automatic calls)", async () => {
+  const s = await setup();
+  try {
+    assert.equal((await s.scheduler.runOnce()).action, "called");
+    s.tick(60_000);
+    const again = await s.scheduler.runOnce({ manual: true });
+    assert.equal(again.action, "called");
+    assert.equal(s.dials.length, 2);
+  } finally { await s.cleanup(); }
+});
+
 test("no qualified idea means no call and no brief", async () => {
   const s = await setup({ ideas: [idea({ thesis: { ...idea().thesis, conviction: 5 } })] });
   try {

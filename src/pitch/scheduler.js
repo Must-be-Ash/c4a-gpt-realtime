@@ -26,9 +26,10 @@ const RECHECK_MS = 60 * MINUTE; // price/news-dependent skips are retried hourly
  * @param {(name:string, data:object) => void} [deps.log]
  * @param {() => number} [deps.now]
  * @param {Function} [deps.writer]        writeBrief override (tests)
+ * @param {() => string} [deps.getEngine]  "elevenlabs" | "realtime" for new pitches
  */
 export function createPitchScheduler(deps) {
-  const { desk, market, store, checkNews, dial, getBalances, settings, openAi, isPaused, isCallActive, emit = () => {}, log = () => {}, now = () => Date.now(), writer = writeBrief } = deps;
+  const { desk, market, store, checkNews, dial, getBalances, settings, openAi, isPaused, isCallActive, emit = () => {}, log = () => {}, now = () => Date.now(), writer = writeBrief, getEngine = () => "elevenlabs" } = deps;
   const skipped = new Map(); // ledgerId -> { at, reasons }
   let running = null;
   let timer = null;
@@ -62,7 +63,7 @@ export function createPitchScheduler(deps) {
     const skips = [];
     for (const idea of ideas) {
       if (!manual && recentlySkipped(idea.ledgerId)) continue;
-      const result = await evaluateIdea(idea, { market, checkNews, store, desk, settings }, { now: now() });
+      const result = await evaluateIdea(idea, { market, checkNews, store, desk, settings }, { now: now(), manual });
       if (result.ok) candidates.push(result.candidate);
       else {
         remember(idea.ledgerId, result.reasons);
@@ -105,6 +106,7 @@ export function createPitchScheduler(deps) {
       asset: vapi.variableValues.asset,
       conviction: idea.thesis.conviction,
       manual,
+      engine: getEngine(),
       facts: brief.facts,
       words: brief.words,
       vapi,
@@ -116,15 +118,15 @@ export function createPitchScheduler(deps) {
       return { action: "dry_run", pitchId: pitch.id, symbol: idea.symbol, asset: vapi.variableValues.asset, vapi, considered, skips };
     }
     try {
-      const { callId, voice, quota } = await dial(vapi);
+      const { callId, voice, quota } = await dial(vapi, pitch);
       await store.recordDial();
       const calledAt = new Date(now()).toISOString();
       await store.update(pitch.id, { status: "in_call", vapiCallId: callId, calledAt, voice, elevenLabsRemaining: quota?.remaining ?? null });
       // Shows on the dashboard like an inbound call and marks the line busy.
-      emit({ kind: "call", type: "incoming", direction: "outbound", callId, caller: settings.callTo, pitchId: pitch.id, title: `Jordan · ${idea.symbol}`, at: now() });
+      emit({ kind: "call", type: "incoming", direction: "outbound", callId, caller: settings.callTo, pitchId: pitch.id, title: `Jordan · ${idea.symbol}${pitch.engine === "realtime" ? " (realtime)" : ""}`, at: now() });
       emit({ kind: "pitch", type: "dialed", callId, pitchId: pitch.id, symbol: idea.symbol, asset: vapi.variableValues.asset, facts: brief.facts, at: now() });
-      log("pitch.call.placed", { pitchId: pitch.id, callId, symbol: idea.symbol, voice, manual });
-      return { action: "called", pitchId: pitch.id, callId, symbol: idea.symbol, asset: vapi.variableValues.asset, voice, considered, skips };
+      log("pitch.call.placed", { pitchId: pitch.id, callId, symbol: idea.symbol, engine: pitch.engine, voice, manual });
+      return { action: "called", pitchId: pitch.id, callId, symbol: idea.symbol, asset: vapi.variableValues.asset, engine: pitch.engine, voice, considered, skips };
     } catch (error) {
       await store.update(pitch.id, { status: "failed", error: error.message });
       log("pitch.call.failed", { pitchId: pitch.id, symbol: idea.symbol, error: error.message });

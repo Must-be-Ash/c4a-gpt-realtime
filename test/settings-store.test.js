@@ -10,7 +10,7 @@ const freshDir = () => mkdtemp(join(tmpdir(), "settings-"));
 
 test("defaults to gpt-realtime-2.1 when nothing is saved", async () => {
   const store = createSettingsStore({ dir: await freshDir() });
-  assert.deepEqual(await store.get(), { activeSipAgent: "gpt-realtime-2.1", selectedAgent: "gpt-realtime-2.1", pitchPaused: false });
+  assert.deepEqual(await store.get(), { activeSipAgent: "gpt-realtime-2.1", selectedAgent: "gpt-realtime-2.1", pitchPaused: false, pitchEngine: "elevenlabs" });
 });
 
 test("env default is honored only if it is a SIP agent", async () => {
@@ -20,8 +20,8 @@ test("env default is honored only if it is a SIP agent", async () => {
 
 test("selecting an OpenAI agent arms it; selecting vapi leaves the armed agent alone", async () => {
   const store = createSettingsStore({ dir: await freshDir() });
-  assert.deepEqual(await store.select("gpt-live-1"), { activeSipAgent: "gpt-live-1", selectedAgent: "gpt-live-1", pitchPaused: false });
-  assert.deepEqual(await store.select("vapi"), { activeSipAgent: "gpt-live-1", selectedAgent: "vapi", pitchPaused: false });
+  assert.deepEqual(await store.select("gpt-live-1"), { activeSipAgent: "gpt-live-1", selectedAgent: "gpt-live-1", pitchPaused: false, pitchEngine: "elevenlabs" });
+  assert.deepEqual(await store.select("vapi"), { activeSipAgent: "gpt-live-1", selectedAgent: "vapi", pitchPaused: false, pitchEngine: "elevenlabs" });
   assert.equal(store.activeSipAgent(), "gpt-live-1");
 });
 
@@ -44,6 +44,16 @@ test("pitch pause persists and survives agent selection", async () => {
   const again = createSettingsStore({ dir });
   assert.equal((await again.get()).pitchPaused, true);
   assert.equal((await again.setPitchPaused(false)).pitchPaused, false);
+});
+
+test("pitch engine persists, validates, and has an env default", async () => {
+  const dir = await freshDir();
+  const store = createSettingsStore({ dir });
+  assert.equal(store.pitchEngine(), "elevenlabs");
+  assert.equal((await store.setPitchEngine("realtime")).pitchEngine, "realtime");
+  await assert.rejects(() => store.setPitchEngine("vapi"), (error) => error.status === 400);
+  assert.equal((await createSettingsStore({ dir }).get()).pitchEngine, "realtime");
+  assert.equal((await createSettingsStore({ dir: await freshDir(), defaultPitchEngine: "realtime" }).get()).pitchEngine, "realtime");
 });
 
 test("rejects unknown agent ids with a 400-style error", async () => {

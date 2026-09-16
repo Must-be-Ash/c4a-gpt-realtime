@@ -30,6 +30,7 @@ const elements = {
   pitchNow: $("#pitchNow"),
   pitchToggle: $("#pitchToggle"),
   pitchStatus: $("#pitchStatus"),
+  pitchEngine: $("#pitchEngine"),
 };
 
 // ── Theme (same behavior as the local app) ──
@@ -251,6 +252,12 @@ function renderPitchState(state) {
   elements.pitchToggle.checked = !state.paused;
   elements.pitchToggle.disabled = !state.enabled;
   elements.pitchNow.disabled = !state.enabled || state.paused;
+  for (const option of elements.pitchEngine.options) {
+    const engine = state.engines?.find((e) => e.id === option.value);
+    option.disabled = engine ? !engine.available : false;
+    if (engine) option.textContent = `Jordan · ${engine.label}`;
+  }
+  elements.pitchEngine.value = state.engine || "elevenlabs";
   elements.pitchStatus.classList.remove("error");
   elements.pitchStatus.textContent = describePitchState(state);
 }
@@ -276,6 +283,19 @@ elements.pitchNow.addEventListener("click", async () => {
   } finally {
     elements.pitchNow.classList.remove("busy");
     elements.pitchNow.disabled = elements.pitchToggle.disabled || !elements.pitchToggle.checked;
+  }
+});
+elements.pitchEngine.addEventListener("change", async () => {
+  const engine = elements.pitchEngine.value;
+  try {
+    const response = await fetch("/api/pitch/engine", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ engine }) });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
+    renderPitchState(body);
+    showPitchMessage(`Jordan will call on ${engine === "realtime" ? "gpt-realtime-2.1" : "ElevenLabs"}`);
+  } catch (error) {
+    showPitchMessage(`Couldn't switch: ${error.message}`, true);
+    loadPitchState();
   }
 });
 elements.pitchToggle.addEventListener("change", async () => {

@@ -41,9 +41,10 @@ export function priceChecks({ price, entry, stop, target }, { minRewardRisk }) {
  * @param {object} deps.settings        config.pitch
  * @param {object} [opts]
  * @param {number} [opts.now]
+ * @param {boolean} [opts.manual]   "Pitch me now" may re-pitch an idea (explicit request)
  * @returns {Promise<{ ok: boolean, reasons: string[], candidate?: object }>}
  */
-export async function evaluateIdea(idea, { market, checkNews, store, desk, settings }, { now = Date.now() } = {}) {
+export async function evaluateIdea(idea, { market, checkNews, store, desk, settings }, { now = Date.now(), manual = false } = {}) {
   const fail = (...reasons) => ({ ok: false, reasons });
 
   // 1. The idea itself.
@@ -51,9 +52,11 @@ export async function evaluateIdea(idea, { market, checkNews, store, desk, setti
   if (idea.thesis.stance !== "bullish") return fail("not_bullish");
   if (!(idea.thesis.conviction >= settings.minConviction)) return fail("low_conviction");
   if (now - Date.parse(idea.openedAt) > settings.maxIdeaAgeHours * HOUR) return fail("stale");
-  if (await store.hasPitched(idea.ledgerId)) return fail("already_pitched");
-  const lastSameSymbol = await store.lastPitchOfSymbol(idea.symbol);
-  if (lastSameSymbol && now - lastSameSymbol < 48 * HOUR) return fail("symbol_pitched_recently");
+  if (!manual) {
+    if (await store.hasPitched(idea.ledgerId)) return fail("already_pitched");
+    const lastSameSymbol = await store.lastPitchOfSymbol(idea.symbol);
+    if (lastSameSymbol && now - lastSameSymbol < 48 * HOUR) return fail("symbol_pitched_recently");
+  }
 
   // 2. Can the owner buy it on Coinbase within the cap?
   const product = await resolveProduct(idea, market, { maxOrderUsd: settings.maxOrderUsd, now });

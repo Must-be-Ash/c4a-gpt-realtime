@@ -69,6 +69,14 @@ export const config = {
     minRewardRisk: Number(process.env.PITCH_MIN_REWARD_RISK ?? 1.5) || 1.5,
     scanIntervalMin: integer(process.env.PITCH_SCAN_INTERVAL_MIN, 10),
     llmModel: process.env.PITCH_LLM_MODEL ?? "gpt-4.1",
+    // gpt-realtime-2.1 engine: Telnyx dials, OpenAI SIP answers.
+    engine: process.env.PITCH_ENGINE ?? "elevenlabs",
+    telnyxApiKey: process.env.TELNYX_API_KEY ?? "",
+    telnyxConnectionId: process.env.TELNYX_PITCH_CONNECTION_ID ?? "",
+    openAiProjectId: process.env.OPENAI_PROJECT_ID ?? "",
+    stateSecret: process.env.SESSION_SECRET || process.env.VAPI_WEBHOOK_SECRET || "",
+    realtimeModel: process.env.PITCH_REALTIME_MODEL ?? process.env.OPENAI_SIP_MODEL ?? "gpt-realtime-2.1",
+    realtimeVoice: process.env.PITCH_REALTIME_VOICE ?? "cedar",
   },
 };
 

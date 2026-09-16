@@ -57,9 +57,10 @@ export function pitchBriefSpec({ facts = {}, asset, symbol } = {}) {
 export function describePitchState(state) {
   if (!state?.enabled) return "Pitch calls off";
   if (state.paused) return "Calls paused";
+  const last = state.recent?.[0];
   const parts = [`${state.callsToday}/${state.maxCallsPerDay} calls today`];
   if (state.dryRun) parts.push("dry run");
-  const last = state.recent?.[0];
+  if (last?.engine === "realtime" || last?.engine === "elevenlabs") parts.push(last.engine === "realtime" ? "realtime" : "ElevenLabs");
   if (last) parts.push(`last: ${last.asset || last.symbol} · ${last.status.replace("_", " ")}`);
   return parts.join(" · ");
 }
@@ -68,7 +69,7 @@ export function describeRunResult(result) {
   if (!result) return "No response";
   if (result.error && !result.action) return result.error;
   switch (result.action) {
-    case "called": return `Calling you about ${result.asset || result.symbol}…`;
+    case "called": return `Calling you about ${result.asset || result.symbol}${result.engine === "realtime" ? " (realtime)" : ""}…`;
     case "dry_run": return `Dry run: would pitch ${result.asset || result.symbol}`;
     case "failed": return `Call failed: ${result.error}`;
     default: {

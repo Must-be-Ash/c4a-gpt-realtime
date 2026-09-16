@@ -37,6 +37,12 @@
         </div>
         <div id="pitchControls" class="pitch-controls" hidden>
           <button id="pitchNow" class="pitch-now" type="button" title="Scan the desk now and call me if something's worth it">Pitch me now</button>
+          <label class="agent-select-wrap" title="Which Jordan calls you">
+            <select id="pitchEngine" class="agent-select" aria-label="Jordan's voice">
+              <option value="elevenlabs">Jordan · ElevenLabs</option>
+              <option value="realtime">Jordan · gpt-realtime-2.1</option>
+            </select>
+          </label>
           <label class="pitch-switch" title="Allow Jordan to call you">
             <input id="pitchToggle" type="checkbox" role="switch" checked />
             <span class="pitch-switch-track" aria-hidden="true"></span>

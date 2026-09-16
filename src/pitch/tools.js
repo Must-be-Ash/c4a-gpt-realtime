@@ -14,9 +14,9 @@ export const PITCH_TOOL_DEFINITIONS = [
   },
   {
     name: "record_pitch_outcome",
-    description: "Record the client's decision on this pitch. Call once the decision is clear: bought (after execute_order succeeds), declined, or thinking (wants time / will call back).",
+    description: "Record the outcome of this pitch once it is clear: bought (after execute_order succeeds), declined, thinking (wants time / will call back), or voicemail (you reached voicemail and left the teaser).",
     parameters: obj({
-      outcome: { type: "string", enum: ["bought", "declined", "thinking"] },
+      outcome: { type: "string", enum: ["bought", "declined", "thinking", "voicemail"] },
       note: { type: "string", description: "Short note, e.g. '2 shares' or 'too risky before earnings'." },
     }, ["outcome"]),
   },
@@ -39,8 +39,8 @@ export function createPitchToolRunners({ store }) {
       const pitch = ctx.pitch ?? (await store.latestUnresolved());
       if (!pitch) return JSON.stringify({ ok: false, error: "No pitch on this call." });
       const outcome = String(args?.outcome ?? "");
-      if (!["bought", "declined", "thinking"].includes(outcome)) throw new Error("outcome must be bought, declined, or thinking.");
-      const status = { bought: "bought", declined: "declined", thinking: "no_decision" }[outcome];
+      if (!["bought", "declined", "thinking", "voicemail"].includes(outcome)) throw new Error("outcome must be bought, declined, thinking, or voicemail.");
+      const status = { bought: "bought", declined: "declined", thinking: "no_decision", voicemail: "voicemail" }[outcome];
       await store.update(pitch.id, { status, outcome, outcomeNote: String(args?.note ?? "").slice(0, 200), decidedAt: new Date().toISOString() });
       ctx.emit?.({ kind: "pitch", type: "outcome", pitchId: pitch.id, outcome });
       return JSON.stringify({ ok: true, instruction: "Recorded. Wrap up in one line and end the call." });

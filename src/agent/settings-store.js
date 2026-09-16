@@ -5,6 +5,7 @@
 // activeSipAgent : what answers the Telnyx number ("gpt-realtime-2.1" | "gpt-live-1").
 // selectedAgent  : what the dashboard dropdown shows (the above, or "vapi").
 // pitchPaused    : true stops all outbound pitch calls (dashboard toggle).
+// pitchEngine    : which Jordan places pitch calls ("elevenlabs" via Vapi | "realtime" gpt-realtime-2.1).
 // Selecting an OpenAI agent arms it; selecting Vapi leaves the armed agent alone.
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -12,6 +13,7 @@ import { join } from "node:path";
 
 export const SIP_AGENTS = ["gpt-realtime-2.1", "gpt-live-1"];
 export const AGENT_IDS = [...SIP_AGENTS, "vapi"];
+export const PITCH_ENGINES = ["elevenlabs", "realtime"];
 const DEFAULT_SIP_AGENT = "gpt-realtime-2.1";
 
 export function agentCatalog({ telnyxNumber = "", vapiNumber = "" } = {}) {
@@ -27,10 +29,11 @@ export function agentCatalog({ telnyxNumber = "", vapiNumber = "" } = {}) {
  * @param {string} opts.dir                 Directory holding settings.json.
  * @param {string} [opts.defaultSipAgent]   Fallback armed agent when no file exists (env-driven).
  */
-export function createSettingsStore({ dir, defaultSipAgent = DEFAULT_SIP_AGENT }) {
+export function createSettingsStore({ dir, defaultSipAgent = DEFAULT_SIP_AGENT, defaultPitchEngine = "elevenlabs" }) {
   const filePath = join(dir, "settings.json");
   const fallbackSip = SIP_AGENTS.includes(defaultSipAgent) ? defaultSipAgent : DEFAULT_SIP_AGENT;
-  let state = { activeSipAgent: fallbackSip, selectedAgent: fallbackSip, pitchPaused: false };
+  const fallbackEngine = PITCH_ENGINES.includes(defaultPitchEngine) ? defaultPitchEngine : "elevenlabs";
+  let state = { activeSipAgent: fallbackSip, selectedAgent: fallbackSip, pitchPaused: false, pitchEngine: fallbackEngine };
 
   const ready = (async () => {
     await mkdir(dir, { recursive: true });
@@ -39,6 +42,7 @@ export function createSettingsStore({ dir, defaultSipAgent = DEFAULT_SIP_AGENT }
       if (SIP_AGENTS.includes(saved.activeSipAgent)) state.activeSipAgent = saved.activeSipAgent;
       state.selectedAgent = AGENT_IDS.includes(saved.selectedAgent) ? saved.selectedAgent : state.activeSipAgent;
       state.pitchPaused = saved.pitchPaused === true;
+      if (PITCH_ENGINES.includes(saved.pitchEngine)) state.pitchEngine = saved.pitchEngine;
     } catch {
       /* first boot or unreadable file -> defaults */
     }
@@ -68,6 +72,14 @@ export function createSettingsStore({ dir, defaultSipAgent = DEFAULT_SIP_AGENT }
       return { ...state };
     },
     pitchPaused() { return state.pitchPaused; },
+    pitchEngine() { return state.pitchEngine; },
+    async setPitchEngine(engine) {
+      await ready;
+      if (!PITCH_ENGINES.includes(engine)) throw Object.assign(new Error(`Unknown pitch engine: ${engine}`), { status: 400 });
+      state = { ...state, pitchEngine: engine };
+      await persist();
+      return { ...state };
+    },
     async setPitchPaused(paused) {
       await ready;
       state = { ...state, pitchPaused: paused === true };

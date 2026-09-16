@@ -48,6 +48,13 @@ export function verifyWebhook(headers, rawBody, secret) {
   return sigHeader.split(" ").some((part) => safeEqual(part.split(",")[1] || part, expected));
 }
 
+// Value of a SIP header by name (case-insensitive), or null.
+export function sipHeader(sipHeaders, name) {
+  const wanted = String(name).toLowerCase();
+  const found = (sipHeaders || []).find((h) => String(h.name).toLowerCase() === wanted);
+  return found ? String(found.value) : null;
+}
+
 function callerFromSipHeaders(sipHeaders) {
   const from = (sipHeaders || []).find((h) => String(h.name).toLowerCase() === "from");
   if (!from) return null;
@@ -75,6 +82,10 @@ const toOpenAiTool = (definition) => ({
  * @param {string} [opts.webhookSecret]          OpenAI webhook signing secret (whsec_...).
  * @param {(e:object)=>void} [opts.emit]         Dashboard event bus.
  * @param {(report:object)=>void} [opts.onCallEnd] Persistence hook.
+ * @param {(event:object)=>Promise<object|null>} [opts.resolveCall]  Per-call override
+ *   (e.g. outbound pitch calls): { model, instructions, voice, firstMessage,
+ *   toolDefinitions, execute(name, args, ctx, controls), ctx, title, onEnd(reason) }.
+ *   A resolved call skips the caller allowlist; the resolver is the gate.
  * @param {typeof fetch} [opts.fetchImpl]
  * @param {(url:string, opts:object)=>object} [opts.wsFactory]  Returns a ws-like object.
  */
@@ -86,17 +97,20 @@ export function createOpenAiSip({
   inputTranscription = null, // e.g. { model: "gpt-4o-mini-transcribe" } — opt-in (a bad model name silently breaks session.update)
   filler = false,            // off by default: latency is the goal, not masking it
   emit = () => {}, onCallEnd, log = () => {},
+  resolveCall = null,
   fetchImpl = fetch, wsFactory,
 }) {
   if (!registry?.execute) throw new Error("createOpenAiSip requires a registry with execute().");
 
   const authHeaders = { authorization: `Bearer ${apiKey}`, "content-type": "application/json" };
 
-  async function accept(callId) {
+  async function accept(callId, custom = null) {
     // Minimal accept (matches OpenAI's working reference). Voice, tools, and
     // turn_detection are applied over the WS via session.update after attaching.
     return fetchImpl(`${OPENAI_API}/realtime/calls/${callId}/accept`, {
-      method: "POST", headers: authHeaders, body: JSON.stringify({ type: "realtime", model, instructions }),
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ type: "realtime", model: custom?.model || model, instructions: custom?.instructions || instructions }),
     });
   }
 
@@ -128,24 +142,28 @@ export function createOpenAiSip({
     const callId = event.data?.call_id;
     const caller = callerFromSipHeaders(event.data?.sip_headers);
     log("openai.sip.incoming", { callId, caller, sipHeaders: event.data?.sip_headers });
-    if (allowedCallers.length && !allowedCallers.includes(caller)) {
-      log("openai.sip.rejected_allowlist", { callId, caller, allowed: allowedCallers });
-      emit({ kind: "call", type: "rejected", callId, caller, at: Date.now() });
-      reject(callId).catch(() => {});
-      return true;
-    }
     // The webhook was acked before this so OpenAI doesn't retry (which spawns
-    // duplicate call_ids). Accept + attach the WS in the background.
+    // duplicate call_ids). Resolve, accept, and attach the WS in the background.
     (async () => {
+      let custom = null;
+      if (resolveCall) {
+        try { custom = await resolveCall(event); } catch (error) { log("openai.sip.resolve_error", { callId, error: error.message }); }
+      }
+      if (!custom && allowedCallers.length && !allowedCallers.includes(caller)) {
+        log("openai.sip.rejected_allowlist", { callId, caller, allowed: allowedCallers });
+        emit({ kind: "call", type: "rejected", callId, caller, at: Date.now() });
+        reject(callId).catch(() => {});
+        return;
+      }
       try {
-        const acc = await accept(callId);
+        const acc = await accept(callId, custom);
         const body = await acc.text().catch(() => "");
         if (!acc.ok) {
           log("openai.sip.accept_failed", { callId, status: acc.status, body: body.slice(0, 500) });
           return;
         }
-        log("openai.sip.accepted", { callId, caller, model, body: body.slice(0, 500) });
-        connect(callId, caller);
+        log("openai.sip.accepted", { callId, caller, model: custom?.model || model, custom: Boolean(custom), body: body.slice(0, 500) });
+        connect(callId, caller, custom);
       } catch (error) {
         log("openai.sip.accept_error", { callId, error: error.message });
         emit({ kind: "error", callId, error: error.message, at: Date.now() });
@@ -157,24 +175,27 @@ export function createOpenAiSip({
   // Open the realtime control WebSocket and run the tool loop. `accept` returns 200
   // while the session is still "being established", so the call WS can 404 for a
   // moment right after — we retry with short backoff until it attaches.
-  function connect(callId, caller) {
+  function connect(callId, caller, custom = null) {
     const url = `${REALTIME_WS}?call_id=${encodeURIComponent(callId)}`;
     // Only the Authorization header — adding OpenAI-Beta causes a 404 on the call WS.
     const headers = { Authorization: `Bearer ${apiKey}` };
-    const ctx = { callId, channel: "phone", emit: (event) => emit({ callId, ...event }) };
+    const ctx = { callId, channel: "phone", emit: (event) => emit({ callId, ...event }), ...(custom?.ctx ?? {}) };
+    const controls = { hangup: () => hangup(callId) };
+    let endAfterTool = false;
     const latency = createLatencyTracker({ callId, emit });
     const MAX_ATTEMPTS = 4;
     const RETRY_MS = 600;
     let finished = false;
     let sawOutputThisTurn = false;
 
-    emit({ kind: "call", type: "incoming", callId, caller, agent: "gpt-realtime-2.1", at: Date.now() });
+    emit({ kind: "call", type: "incoming", callId, caller, agent: "gpt-realtime-2.1", ...(custom?.title ? { title: custom.title, direction: "outbound", pitchId: custom.ctx?.pitch?.id } : {}), at: Date.now() });
 
     const finish = async (reason) => {
       if (finished) return;
       finished = true;
       latency.finish();
       emit({ kind: "end-of-call-report", callId, endedReason: reason, at: Date.now() });
+      if (custom?.onEnd) await Promise.resolve(custom.onEnd(reason)).catch(() => {});
       if (onCallEnd) await onCallEnd({ call: { id: callId }, endedReason: reason });
     };
 
@@ -192,17 +213,18 @@ export function createOpenAiSip({
           type: "session.update",
           session: {
             type: "realtime", // required — without it the whole session.update is rejected
-            instructions,
+            instructions: custom?.instructions || instructions,
             // GA shape: turn_detection under audio.input, voice under audio.output.
             audio: {
               input: { turn_detection: turnDetection, ...(inputTranscription ? { transcription: inputTranscription } : {}) },
-              output: { voice },
+              output: { voice: custom?.voice || voice },
             },
-            tools: (getToolDefinitions?.() || []).map(toOpenAiTool),
+            tools: (custom?.toolDefinitions || getToolDefinitions?.() || []).map(toOpenAiTool),
           },
         });
-        // Answer proactively with a short greeting.
-        if (greeting) send({ type: "response.create", response: { instructions: `Greet the caller in one short sentence: "${greeting}"` } });
+        // Answer proactively: a resolved call opens with its own line.
+        if (custom?.firstMessage) send({ type: "response.create", response: { instructions: `Say exactly this, then keep going with the pitch: "${custom.firstMessage}"` } });
+        else if (greeting) send({ type: "response.create", response: { instructions: `Greet the caller in one short sentence: "${greeting}"` } });
         emit({ kind: "status-update", callId, status: "in-progress", at: Date.now() });
       };
 
@@ -222,7 +244,9 @@ export function createOpenAiSip({
             }
             let output;
             try {
-              const result = await registry.execute(msg.name, args, ctx);
+              const result = custom?.execute
+                ? await custom.execute(msg.name, args, ctx, { ...controls, endAfterThis: () => { endAfterTool = true; } })
+                : await registry.execute(msg.name, args, ctx);
               output = typeof result === "string" ? result : JSON.stringify(result);
               emit({ kind: "tool", type: "done", callId, name: msg.name, at: Date.now() });
             } catch (error) {
@@ -231,6 +255,11 @@ export function createOpenAiSip({
             }
             latency.toolDone(msg.name);
             send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: msg.call_id, output } });
+            if (endAfterTool) {
+              // Let the goodbye already spoken finish playing, then hang up.
+              setTimeout(() => controls.hangup(), 2500);
+              break;
+            }
             send({ type: "response.create" });
             break;
           }

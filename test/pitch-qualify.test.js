@@ -74,6 +74,11 @@ for (const [reason, ideaOver, depOver] of skips) {
   });
 }
 
+test("manual runs may re-pitch an idea that was already pitched", async () => {
+  const r = await evaluateIdea(idea(), deps({ pitched: true, lastSymbol: NOW - 60_000 }), { now: NOW, manual: true });
+  assert.equal(r.ok, true);
+});
+
 test("equities are skipped while the market is closed", async () => {
   const saturday = Date.parse("2026-09-19T15:00:00Z");
   const r = await run({ openedAt: "2026-09-19T14:00:00Z" }, {}, saturday);

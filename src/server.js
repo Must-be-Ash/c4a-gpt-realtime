@@ -51,6 +51,8 @@ import { createPitchStore } from "./pitch/pitch-store.js";
 import { createPitchScheduler } from "./pitch/scheduler.js";
 import { createPitchDialer } from "./pitch/vapi-outbound.js";
 import { createPitchToolRunners, PITCH_TOOL_NAMES } from "./pitch/tools.js";
+import { createRealtimePitch } from "./pitch/realtime-pitch.js";
+import { createTelnyxPitchDialer } from "./pitch/telnyx-dialer.js";
 import { equityPreviewEstimate, estimateNotionalUsd, isEquityPreviewUnavailable, pitchGuardViolation } from "./pitch/order-guard.js";
 import { buildToolRegistry } from "./agent/tools.js";
 import { createVapiWebhook } from "./agent/vapi-webhook.js";
@@ -70,6 +72,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const reportsDirectory = join(root, "reports");
 const runtimeLogPath = join(root, "runtime", "events.jsonl");
 const agentInstructions = await readFile(join(root, "AGENT.md"), "utf8");
+const pitchPromptTemplate = await readFile(join(root, "src", "pitch", "PITCH_AGENT.md"), "utf8");
 const app = express();
 const previews = new PreviewStore({ ttlMs: config.previewTtlMs });
 const trader = createCoinbaseTrader();
@@ -208,6 +211,21 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
   //    only runs with ENABLE_PITCH_CALLS. ──
   const pitchConfigured = Boolean(config.enableWebPhone && config.pitch.assistantId && config.pitch.phoneNumberId);
   const pitchStore = createPitchStore({ dir: join(root, "runtime") });
+  const pitchRunners = createPitchToolRunners({ store: pitchStore });
+  // gpt-realtime-2.1 engine: Telnyx dials, OpenAI SIP answers with Jordan.
+  const realtimePitchReady = Boolean(pitchConfigured && config.enableOpenAiSip && config.pitch.telnyxApiKey && config.pitch.telnyxConnectionId && config.pitch.openAiProjectId);
+  const realtimePitch = createRealtimePitch({
+    store: pitchStore,
+    registry: toolRegistry,
+    runners: pitchRunners,
+    promptTemplate: pitchPromptTemplate,
+    sharedDefinitions: toolRegistry.staticDefinitions,
+    settings: config.pitch,
+    emit: emitEvent,
+    log: logEvent,
+  });
+  const telnyxPitch = createTelnyxPitchDialer({ settings: config.pitch, store: pitchStore, emit: emitEvent, log: logEvent });
+  if (realtimePitchReady) app.post("/telnyx/pitch-events", express.json({ limit: "1mb" }), telnyxPitch.handleEvent);
 
   // ── Phone transport A: Vapi (managed OpenAI Realtime; limited to Vapi's model list) ──
   if (config.enableWebPhone) {
@@ -226,7 +244,7 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
             phoneNumberId: config.pitch.phoneNumberId,
             assistantId: config.pitch.assistantId,
             store: pitchStore,
-            runners: createPitchToolRunners({ store: pitchStore }),
+            runners: pitchRunners,
             toolNames: PITCH_TOOL_NAMES,
             maxOrderUsd: config.pitch.maxOrderUsd,
           }
@@ -236,7 +254,7 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
   }
 
   // ── Armed-agent settings (which OpenAI path answers the shared Telnyx number) ──
-  const settings = createSettingsStore({ dir: join(root, "runtime"), defaultSipAgent: config.openAiSipDefaultAgent });
+  const settings = createSettingsStore({ dir: join(root, "runtime"), defaultSipAgent: config.openAiSipDefaultAgent, defaultPitchEngine: config.pitch.engine });
   const agentState = async () => ({
     ...(await settings.get()),
     agents: agentCatalog({ telnyxNumber: config.sipPhoneNumber, vapiNumber: config.vapiPhoneNumber }),
@@ -253,13 +271,16 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
   }));
 
   // ── Pitch scheduler + dashboard controls ──
+  const vapiPitchDial = createPitchDialer({ settings: config.pitch });
   const pitchScheduler = config.pitch.enabled && pitchConfigured
     ? createPitchScheduler({
       desk: createDeskSource({ url: config.pitch.deskDatabaseUrl, log: logEvent }),
       market: marketData,
       store: pitchStore,
       checkNews: createNewsCheck({ exaApiKey: config.exaApiKey, openAiApiKey: config.openAiApiKey, model: config.summaryModel }),
-      dial: createPitchDialer({ settings: config.pitch }),
+      dial: (vapi, pitch) => (pitch.engine === "realtime" ? telnyxPitch.dial(vapi, pitch) : vapiPitchDial(vapi)),
+      // Fall back to ElevenLabs if the realtime engine isn't configured on this deployment.
+      getEngine: () => (settings.pitchEngine() === "realtime" && realtimePitchReady ? "realtime" : "elevenlabs"),
       getBalances: () => trader.balance(),
       settings: config.pitch,
       openAi: { apiKey: config.openAiApiKey, model: config.summaryModel },
@@ -273,18 +294,38 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
     enabled: Boolean(pitchScheduler),
     dryRun: config.pitch.dryRun,
     paused: settings.pitchPaused(),
+    engine: settings.pitchEngine(),
+    engines: [
+      { id: "elevenlabs", label: "ElevenLabs (Vapi)", available: pitchConfigured },
+      { id: "realtime", label: `${config.pitch.realtimeModel} (${config.pitch.realtimeVoice})`, available: realtimePitchReady },
+    ],
     pitchNumber: config.pitch.phoneNumber || null,
     maxCallsPerDay: config.pitch.maxCallsPerDay,
     maxOrderUsd: config.pitch.maxOrderUsd,
     ...(await pitchStore.dialState()),
     lastRun: pitchScheduler?.lastRun ?? null,
     nextScanAt: pitchScheduler?.nextScanAt() ?? null,
-    recent: (await pitchStore.list({ limit: 5 })).map(({ id, symbol, asset, status, calledAt, createdAt, outcome, voice }) => ({ id, symbol, asset, status, calledAt, createdAt, outcome, voice })),
+    recent: (await pitchStore.list({ limit: 5 })).map(({ id, symbol, asset, status, calledAt, createdAt, outcome, voice, engine }) => ({ id, symbol, asset, status, calledAt, createdAt, outcome, voice, engine })),
   });
   app.get("/api/pitch/state", asyncRoute(async (_request, response) => response.json(await pitchState())));
   app.post("/api/pitch/pause", express.json({ limit: "1kb" }), asyncRoute(async (request, response) => {
     await settings.setPitchPaused(request.body?.paused === true);
     logEvent("pitch.paused", { paused: settings.pitchPaused() });
+    response.json(await pitchState());
+  }));
+  app.post("/api/pitch/engine", express.json({ limit: "1kb" }), asyncRoute(async (request, response) => {
+    const engine = String(request.body?.engine ?? "");
+    if (engine === "realtime" && !realtimePitchReady) {
+      response.status(409).json({ error: "The gpt-realtime-2.1 engine needs ENABLE_OPENAI_SIP, OPENAI_PROJECT_ID, TELNYX_API_KEY and TELNYX_PITCH_CONNECTION_ID." });
+      return;
+    }
+    try {
+      await settings.setPitchEngine(engine);
+    } catch (error) {
+      response.status(error.status || 500).json({ error: error.message });
+      return;
+    }
+    logEvent("pitch.engine", { engine });
     response.json(await pitchState());
   }));
   app.post("/api/pitch/run", asyncRoute(async (_request, response) => {
@@ -324,6 +365,7 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
       emit: emitEvent,
       onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
       log: (event, data) => logEvent(event, data),
+      resolveCall: realtimePitchReady ? realtimePitch.resolveCall : null,
     });
     // GPT-Live splits the prompt: a short voice-layer prompt (tone, interruptions,
     // when to delegate) and the full agent prompt on the delegation backend (tools).
@@ -372,6 +414,7 @@ The backend is fast (usually under a second) and the caller sees results on a da
       secret: config.openAiWebhookSecret,
       getArmedAgent: () => settings.activeSipAgent(),
       sip, live,
+      isPitchCall: realtimePitch.isPitchCall,
       log: (event, data) => logEvent(event, data),
     }));
     // TeXML for the SIP trunk (Telnyx): dial the OpenAI SIP endpoint for our project,

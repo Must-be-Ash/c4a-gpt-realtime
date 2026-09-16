@@ -14,6 +14,8 @@
 
 import { timingSafeEqual } from "node:crypto";
 
+import { executePitchTool, pitchCallContext } from "../pitch/tool-exec.js";
+
 function safeEqual(a, b) {
   const left = Buffer.from(String(a ?? ""));
   const right = Buffer.from(String(b ?? ""));
@@ -91,9 +93,8 @@ export function createVapiWebhook({ registry, secret, allowedCallers = [], assis
     const onPitchLine = Boolean(pitch?.phoneNumberId) && phoneNumberId === pitch.phoneNumberId;
     const isPitchCall = Boolean(pitch) && (onPitchLine || message.call?.assistantId === pitch.assistantId);
     if (isPitchCall && type !== "assistant-request") {
-      ctx.pitchCall = true;
-      ctx.pitch = (await pitch.store.byCallId(callId)) ?? (await pitch.store.byCallbackId?.(callId)) ?? null;
-      ctx.pitchGuard = ctx.pitch?.productId ? { maxUsd: pitch.maxOrderUsd, productId: ctx.pitch.productId } : null;
+      const record = (await pitch.store.byCallId(callId)) ?? (await pitch.store.byCallbackId?.(callId)) ?? null;
+      Object.assign(ctx, pitchCallContext(record, pitch.maxOrderUsd));
     }
 
     try {
@@ -131,20 +132,9 @@ export function createVapiWebhook({ registry, secret, allowedCallers = [], assis
           for (const toolCall of normalizeToolCalls(message)) {
             emit({ kind: "tool", type: "start", callId, name: toolCall.name, at: Date.now() });
             try {
-              let output;
-              if (ctx.pitchCall && !pitch.toolNames.includes(toolCall.name)) {
-                throw new Error(`${toolCall.name} isn't available on the pitch line.`);
-              } else if (ctx.pitchCall && pitch.runners[toolCall.name]) {
-                output = await pitch.runners[toolCall.name](toolCall.args, ctx);
-              } else if (ctx.pitchCall && ["preview_order", "execute_order"].includes(toolCall.name) && !ctx.pitchGuard) {
-                throw new Error("No pitched trade on this call, so no orders here. Use the main agent line.");
-              } else {
-                output = await registry.execute(toolCall.name, toolCall.args, ctx);
-                if (ctx.pitch && toolCall.name === "execute_order") {
-                  const orderId = (() => { try { return JSON.parse(output)?.result?.order_id ?? JSON.parse(output)?.result?.success_response?.order_id ?? null; } catch { return null; } })();
-                  await pitch.store.update(ctx.pitch.id, { orderId, status: "bought", outcome: "bought", decidedAt: new Date().toISOString() });
-                }
-              }
+              const output = ctx.pitchCall
+                ? await executePitchTool({ name: toolCall.name, args: toolCall.args, ctx, registry, runners: pitch.runners, toolNames: pitch.toolNames, store: pitch.store })
+                : await registry.execute(toolCall.name, toolCall.args, ctx);
               const result = typeof output === "string" ? output : JSON.stringify(output);
               results.push({ toolCallId: toolCall.id, result });
               emit({ kind: "tool", type: "done", callId, name: toolCall.name, at: Date.now() });

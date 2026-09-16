@@ -6,7 +6,9 @@
 import { REALTIME_INCOMING_EVENT, verifyWebhook } from "./openai-sip.js";
 import { LIVE_INCOMING_EVENTS } from "./openai-live.js";
 
-export function createOpenAiWebhookRouter({ secret, getArmedAgent, sip, live, log = () => {} }) {
+// `isPitchCall(event)`: outbound pitch calls always run on the Realtime API,
+// whichever agent is armed for inbound calls.
+export function createOpenAiWebhookRouter({ secret, getArmedAgent, sip, live, isPitchCall = () => false, log = () => {} }) {
   return function handle(request, response) {
     const raw = Buffer.isBuffer(request.body) ? request.body.toString("utf8") : String(request.body ?? "");
     log("openai.webhook.hit", { bytes: raw.length });
@@ -18,8 +20,9 @@ export function createOpenAiWebhookRouter({ secret, getArmedAgent, sip, live, lo
     const isRealtime = event.type === REALTIME_INCOMING_EVENT;
     const isLive = LIVE_INCOMING_EVENTS.has(event.type);
     if (!isRealtime && !isLive) return;
-    const acted = (isRealtime && armed === "gpt-realtime-2.1") || (isLive && armed === "gpt-live-1");
-    log("openai.webhook.routed", { type: event.type, armed, acted, id: event.data?.call_id || event.data?.session_id });
+    const pitch = isPitchCall(event);
+    const acted = pitch ? isRealtime : (isRealtime && armed === "gpt-realtime-2.1") || (isLive && armed === "gpt-live-1");
+    log("openai.webhook.routed", { type: event.type, armed, acted, pitch, id: event.data?.call_id || event.data?.session_id });
     if (!acted) return;
     if (isRealtime) sip.handleEvent(event); else live.handleEvent(event);
   };
