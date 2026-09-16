@@ -240,6 +240,20 @@ New code goes in `src/pitch/`, and the existing Vapi webhook, tool registry, and
 - [x] **8.4** Add an optional section *(Done: "8b. Optional: outbound pitch calls".)* to the `launch-web-vapi` skill (buy/import a second number, configure the pitch assistant).
 - [x] **8.5** Update the project memory note with the shipped state.
 
+### Phase 9: Owner feedback round 1 (plain English, latency, gpt-realtime-2.1)
+
+First live call feedback: "pretty good", but replies came too slowly (Vapi measured 2.2 s average per turn: LLM 1.15 s, ElevenLabs 0.5 s, speech-to-text 0.45 s) and the pitch was too technical. The owner is new to investing and wants to make money.
+
+- [x] **9.1 Plain-English pitch.** *(Done: PITCH_AGENT.md rewritten (shorter, ~4.3k chars; bans jargon, money-first, story order); the brief writer bans jargon and caps fields at 25 words. A live OXY brief now reads "We buy Occidental because blocked oil routes can push oil higher and lift the company with it.")* Rewrite the Jordan prompt and the brief writer for someone new to investing: no jargon (or explain it in five words), lead with "you put in X, you could make Y", explain *why* in everyday terms, give one concrete comparison, and keep the stop as "if it drops to X we get out, you'd lose about Y".
+- [x] **9.2 ElevenLabs version latency.** *(Applied: shorter prompt, `waitSeconds` 0.4→0.2, `optimizeStreamingLatency` 3, `maxTokens` 220. Turn latency still to be measured on the next ElevenLabs call (9.9); the realtime version is the bigger latency fix.)* Trim the prompt, lower `startSpeakingPlan.waitSeconds`, raise ElevenLabs `optimizeStreamingLatency`, re-apply the assistant, and compare turn latency on the next call.
+- [ ] **9.3 Telnyx outbound app for realtime.** A Call Control application ("pitch-realtime") on the Default outbound profile, with webhooks to `/telnyx/pitch-events`. Settings: `TELNYX_API_KEY`, `TELNYX_PITCH_CONNECTION_ID`.
+- [ ] **9.4 Realtime dialer** (`src/pitch/telnyx-dialer.js`). `POST /v2/calls` from the pitch number to the owner, with an HMAC-signed `client_state`. On `call.answered`, transfer to `sip:<project>@sip.api.openai.com` (TLS) with an `X-Pitch-Id` header; hang-ups before answer become `no_answer`. Unsigned or unknown webhook events are ignored.
+- [ ] **9.5 Pitch mode in the OpenAI SIP handler.** A per-call `resolveCall` hook: when `X-Pitch-Id` matches a dialing pitch, accept with gpt-realtime-2.1, voice **cedar**, the Jordan prompt with this pitch's variables, and the pitch tools. It uses the same guard, cap, and outcome recording as the Vapi webhook (shared code), plus an `end_call` tool. The router sends pitch calls to realtime regardless of which agent is armed.
+- [ ] **9.6 Voicemail on realtime.** The model leaves the teaser when it hears a greeting or beep, records `voicemail`, and ends the call. Calling back the pitch number still reaches the ElevenLabs Jordan on Vapi, preloaded with the pitch.
+- [ ] **9.7 Call end → pitch status** (`no_decision` unless an outcome was recorded) and dashboard events identical to the Vapi path.
+- [ ] **9.8 Dashboard switch** "Jordan's voice: ElevenLabs | gpt-realtime-2.1" (persisted `pitchEngine` in settings), used by the scheduler and Pitch me now.
+- [ ] **9.9 Tests + deploy + live comparison call** on each engine.
+
 ---
 
 ## 4. Out of scope / later

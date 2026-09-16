@@ -162,14 +162,14 @@ const WORDS_SCHEMA = {
   additionalProperties: false,
   required: ["spokenName", "opener", "hook", "trendLine", "catalyst", "whyNow", "theTurn", "keyRisk", "close", "voicemail", "sourceLine"],
   properties: {
-    spokenName: { type: "string", description: "How to say the asset out loud, e.g. Nike, Occidental, crude oil via the USO fund." },
+    spokenName: { type: "string", description: "How to say the asset out loud, e.g. Nike, Occidental, oil (through the USO oil fund)." },
     opener: { type: "string", description: "First words on the call, max 25 words." },
-    hook: { type: "string", description: "One sentence: the idea." },
+    hook: { type: "string", description: "One plain sentence: what we buy and why, like you would tell a friend." },
     trendLine: { type: "string", description: "Where price has been, from trend facts." },
-    catalyst: { type: "string", description: "The concrete development driving it." },
-    whyNow: { type: "string", description: "Why today, not next week." },
-    theTurn: { type: "string", description: "What changes the picture (the 'this turns it around' line)." },
-    keyRisk: { type: "string", description: "One honest sentence on the downside, with the stop." },
+    catalyst: { type: "string", description: "What just happened, in everyday words." },
+    whyNow: { type: "string", description: "Why today and not next week, in everyday words." },
+    theTurn: { type: "string", description: "Why the price should go up from here (the 'this turns it around' line), in everyday words." },
+    keyRisk: { type: "string", description: "One honest plain sentence: where we get out and roughly what he would lose." },
     close: { type: "string", description: "The assumptive close using the suggested size." },
     voicemail: { type: "string", description: "Voicemail teaser, max 40 words, ends by asking for a call back on this number." },
     sourceLine: { type: "string", description: "Who reported it, e.g. per Reuters and Portnews." },
@@ -179,6 +179,12 @@ const WORDS_SCHEMA = {
 function writerPrompt(facts) {
   return `You write the talking points for "Jordan", a Wolf-of-Wall-Street-style closer who phones his one client with a trade.
 Jordan is cool, confident, dead serious about closing, and sharp. Short punchy spoken sentences. He needles the client to fire him up, never small talk, never jokes for their own sake. Mild swearing at most (hell, damn). He is selling a real idea, so every claim must be true.
+
+The client wants to make money but is NEW TO INVESTING. Write for someone with zero finance knowledge:
+- Everyday words. No jargon: never write thesis, catalyst, dislocation, tape, physical, reward-risk, basis points, bps, VLCC, LNG carrier, equity, sell-side, index trackers, forced flow. Say what they mean ("big funds have to sell", "fewer oil tankers can get through").
+- Tell it like a short story: what happened, why that matters for this company, why the price should move.
+- Money first: what he puts in and roughly what he could make or lose.
+- One sentence per field, 25 words max, except voicemail.
 
 Rules:
 - Use ONLY facts below. Every number you write must appear in the facts (prices, percents, dollar amounts, dates, counts). Round the way the facts are rounded. Never invent analysts, targets, patents, or returns.

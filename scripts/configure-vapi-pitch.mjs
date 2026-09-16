@@ -85,7 +85,7 @@ export function buildPitchAssistant({ systemPrompt, definitions, webhookUrl, web
       provider: "openai",
       model: env.PITCH_LLM_MODEL || "gpt-4.1",
       temperature: 0.6,
-      maxTokens: 300,
+      maxTokens: 220, // short turns; the pitch is delivered across turns
       messages: [{ role: "system", content: systemPrompt }],
       tools: [...tools, { type: "endCall" }],
     },
@@ -99,6 +99,8 @@ export function buildPitchAssistant({ systemPrompt, definitions, webhookUrl, web
       style: 0.3,
       useSpeakerBoost: true,
       speed: 1.05,
+      // Trade a little audio polish for a faster first syllable.
+      optimizeStreamingLatency: 3,
       fallbackPlan: { voices: [{ provider: "vapi", voiceId: env.PITCH_FALLBACK_VOICE || "Godfrey" }] },
     },
     transcriber: { provider: "deepgram", model: "nova-3", language: "en" },
@@ -107,7 +109,8 @@ export function buildPitchAssistant({ systemPrompt, definitions, webhookUrl, web
     backgroundSpeechDenoisingPlan: { smartDenoisingPlan: { enabled: true } },
     // Let the client cut in quickly, but not on a single "uh-huh".
     stopSpeakingPlan: { numWords: 2, voiceSeconds: 0.2, backoffSeconds: 1 },
-    startSpeakingPlan: { waitSeconds: 0.4, smartEndpointingPlan: { provider: "vapi" } },
+    // First live call averaged 2.2 s per turn; keep the fixed wait minimal.
+    startSpeakingPlan: { waitSeconds: 0.2, smartEndpointingPlan: { provider: "vapi" } },
     voicemailDetection: { provider: "vapi", type: "audio", beepMaxAwaitSeconds: 20 },
     voicemailMessage: "{{voicemailMessage}}",
     endCallMessage: "Talk soon.",
