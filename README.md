@@ -16,7 +16,10 @@ The skills themselves live in [`skills/`](skills/): [`launch-coinbase-for-agents
 
 All research, market data, balances, previews, and orders use live providers. The application contains no runtime mock-data mode.
 
-> This is an experimental prototype, not financial advice. Live mode can place real Coinbase orders after spoken confirmation. Use a dedicated portfolio with limited funds and permissions.
+> [!WARNING]
+> Early and experimental — not intended for production use. Not financial advice. Use of this sample application may cause a negative financial impact.
+>
+> Live mode can place real Coinbase orders after spoken confirmation. Use a dedicated portfolio with limited funds and permissions.
 
 ## Requirements
 
