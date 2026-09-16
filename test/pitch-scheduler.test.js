@@ -100,6 +100,20 @@ test("Pitch me now can re-pitch the same idea (spacing and dedupe are for automa
   } finally { await s.cleanup(); }
 });
 
+test("a targeted manual run can call about an older desk position; untargeted runs can't", async () => {
+  const old = idea({ openedAt: "2026-09-10T13:30:00Z" });
+  const s = await setup({ ideas: [old, idea({ ledgerId: "41", symbol: "OXY", openedAt: "2026-09-16T15:00:00Z" })] });
+  try {
+    const none = await s.scheduler.runOnce({ manual: true, symbol: "TSLA" });
+    assert.deepEqual(none.reasons, ["no_open_desk_long_for_TSLA"]);
+    const r = await s.scheduler.runOnce({ manual: true, symbol: "nke" });
+    assert.equal(r.action, "called");
+    assert.equal(r.symbol, "NKE");
+    const auto = await setup({ ideas: [old] });
+    try { assert.equal((await auto.scheduler.runOnce()).skips[0].reasons[0], "stale"); } finally { await auto.cleanup(); }
+  } finally { await s.cleanup(); }
+});
+
 test("no qualified idea means no call and no brief", async () => {
   const s = await setup({ ideas: [idea({ thesis: { ...idea().thesis, conviction: 5 } })] });
   try {

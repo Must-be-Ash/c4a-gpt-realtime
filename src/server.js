@@ -328,13 +328,15 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
     logEvent("pitch.engine", { engine });
     response.json(await pitchState());
   }));
-  app.post("/api/pitch/run", asyncRoute(async (_request, response) => {
+  app.post("/api/pitch/run", express.json({ limit: "1kb" }), asyncRoute(async (request, response) => {
     if (!pitchScheduler) {
       response.status(409).json({ error: "Pitch calls are off (set ENABLE_PITCH_CALLS=1 and the VAPI_PITCH_* settings)." });
       return;
     }
-    const result = await pitchScheduler.runOnce({ manual: true });
-    logEvent("pitch.run.manual", { action: result.action, symbol: result.symbol ?? null, reasons: result.reasons ?? [] });
+    // Optional { symbol } targets one desk position for a test call (any age).
+    const symbol = /^[A-Za-z.]{1,10}$/.test(String(request.body?.symbol ?? "")) ? request.body.symbol : null;
+    const result = await pitchScheduler.runOnce({ manual: true, symbol });
+    logEvent("pitch.run.manual", { target: symbol, action: result.action, symbol: result.symbol ?? null, reasons: result.reasons ?? [] });
     const { vapi: _vapi, ...summary } = result;
     response.json({ ...summary, state: await pitchState() });
   }));

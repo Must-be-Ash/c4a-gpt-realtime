@@ -11,6 +11,8 @@ const MINUTE = 60_000;
 // Skip reasons that can't change for the same desk position.
 const PERMANENT = new Set(["no_thesis", "not_bullish", "low_conviction", "not_on_coinbase", "not_tradable", "already_pitched", "bad_levels", "missing_levels", "desk_closed_position"]);
 const RECHECK_MS = 60 * MINUTE; // price/news-dependent skips are retried hourly
+// A targeted test run ("call me about Nike") looks back this far for the desk's position.
+const TARGETED_LOOKBACK_MS = 30 * 24 * 3_600_000;
 
 /**
  * @param {object} deps
@@ -51,19 +53,24 @@ export function createPitchScheduler(deps) {
     return { paused: isPaused(), callInProgress: isCallActive(), ...dials };
   }
 
-  async function scan({ manual }) {
+  async function scan({ manual, symbol = null }) {
     const t = now();
+    // A targeted manual run may use an older desk position; every other check still applies.
+    const targeted = manual && symbol ? String(symbol).toUpperCase() : null;
+    const ideaSettings = targeted ? { ...settings, maxIdeaAgeHours: TARGETED_LOOKBACK_MS / 3_600_000 } : settings;
     // Cheap exits before touching any paid API.
     const pre = callGateReasons(await gateState(), settings, { manual, kind: manual ? "spot" : null, now: t });
     if (pre.length) return { action: "none", reasons: pre };
     if (!desk.configured) return { action: "none", reasons: ["desk_not_configured"] };
 
-    const ideas = await desk.listNewLongOpens({ since: t - settings.maxIdeaAgeHours * 3_600_000 });
+    const opened = await desk.listNewLongOpens({ since: t - ideaSettings.maxIdeaAgeHours * 3_600_000, limit: targeted ? 200 : 50 });
+    const ideas = targeted ? opened.filter((idea) => idea.symbol === targeted) : opened;
+    if (targeted && !ideas.length) return { action: "none", reasons: [`no_open_desk_long_for_${targeted}`] };
     const candidates = [];
     const skips = [];
     for (const idea of ideas) {
       if (!manual && recentlySkipped(idea.ledgerId)) continue;
-      const result = await evaluateIdea(idea, { market, checkNews, store, desk, settings }, { now: now(), manual });
+      const result = await evaluateIdea(idea, { market, checkNews, store, desk, settings: ideaSettings }, { now: now(), manual });
       if (result.ok) candidates.push(result.candidate);
       else {
         remember(idea.ledgerId, result.reasons);
@@ -134,9 +141,9 @@ export function createPitchScheduler(deps) {
     }
   }
 
-  async function runOnce({ manual = false } = {}) {
+  async function runOnce({ manual = false, symbol = null } = {}) {
     if (running) return { action: "none", reasons: ["scan_in_progress"] };
-    running = scan({ manual })
+    running = scan({ manual, symbol })
       .catch((error) => {
         log("pitch.scan.failed", { error: error.message });
         return { action: "failed", error: error.message };
