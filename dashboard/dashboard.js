@@ -12,6 +12,7 @@ import {
 } from "../public/artifact-render.js";
 import { buildToolResultArtifact, buildSmartMoneyArtifact } from "../public/tool-result-artifact.js";
 import { captionWindow } from "../public/caption-window.js";
+import { describePitchState, describeRunResult, pitchBriefSpec } from "./pitch-brief.js";
 
 const $ = (selector) => document.querySelector(selector);
 const elements = {
@@ -25,6 +26,10 @@ const elements = {
   tradeTemplate: $("#tradeTemplate"),
   agentSelect: $("#agentSelect"),
   agentHint: $("#agentHint"),
+  pitchControls: $("#pitchControls"),
+  pitchNow: $("#pitchNow"),
+  pitchToggle: $("#pitchToggle"),
+  pitchStatus: $("#pitchStatus"),
 };
 
 // ── Theme (same behavior as the local app) ──
@@ -106,7 +111,7 @@ function renderTrade(event) {
   const preview = data.preview || {};
   panel.querySelector(".trade-details").textContent = [
     order.limitPrice && `limit $${order.limitPrice}`,
-    preview.est_average_filled_price && `est fill $${preview.est_average_filled_price}`,
+    preview.est_average_filled_price && (preview.estimated ? `estimate ~$${preview.est_average_filled_price} (live price)` : `est fill $${preview.est_average_filled_price}`),
     preview.commission_total && `fee $${preview.commission_total}`,
     data.expiresAt && !executed && `expires ${new Date(data.expiresAt).toLocaleTimeString()}`,
   ].filter(Boolean).join(" · ");
@@ -139,7 +144,8 @@ function showCaption(role, text) {
 function handle(event) {
   switch (event.kind) {
     case "call":
-      if (event.type === "incoming") setCall("incoming", event.caller ? `Incoming · ${event.caller}` : "Incoming");
+      if (event.type === "incoming" && event.direction === "outbound") setCall("incoming", `Calling you · ${event.title || "Jordan"}`);
+      else if (event.type === "incoming") setCall("incoming", event.title || (event.caller ? `Incoming · ${event.caller}` : "Incoming"));
       else if (event.type === "rejected") setCall("rejected", "Rejected");
       break;
     case "status-update":
@@ -175,6 +181,10 @@ function handle(event) {
     case "latency":
       if (event.type === "turn") elements.callPill.title = `last reply gap ${event.ms} ms`;
       else if (event.type === "summary" && event.medianTurnMs != null) setCall("ended", `Ended · median reply ${event.medianTurnMs} ms`);
+      break;
+    case "pitch":
+      if (event.type === "dialed" && event.facts) genericArtifact(pitchBriefSpec(event), "pitch");
+      if (event.type === "outcome" || event.type === "ended") loadPitchState();
       break;
     case "end-of-call-report":
       if (!elements.callPill.textContent.startsWith("Ended")) setCall("ended", "Call ended");
@@ -228,6 +238,58 @@ elements.agentSelect.addEventListener("change", async () => {
   }
 });
 
+// ── Pitch calls ("Jordan") ──
+let pitchMessageTimer = null;
+function showPitchMessage(text, isError = false) {
+  elements.pitchStatus.textContent = text;
+  elements.pitchStatus.classList.toggle("error", isError);
+  if (pitchMessageTimer) clearTimeout(pitchMessageTimer);
+  pitchMessageTimer = setTimeout(loadPitchState, 12_000);
+}
+function renderPitchState(state) {
+  elements.pitchControls.hidden = false;
+  elements.pitchToggle.checked = !state.paused;
+  elements.pitchToggle.disabled = !state.enabled;
+  elements.pitchNow.disabled = !state.enabled || state.paused;
+  elements.pitchStatus.classList.remove("error");
+  elements.pitchStatus.textContent = describePitchState(state);
+}
+async function loadPitchState() {
+  try {
+    const response = await fetch("/api/pitch/state");
+    if (!response.ok) return;
+    renderPitchState(await response.json());
+  } catch { /* controls stay hidden */ }
+}
+elements.pitchNow.addEventListener("click", async () => {
+  elements.pitchNow.disabled = true;
+  elements.pitchNow.classList.add("busy");
+  elements.pitchStatus.classList.remove("error");
+  elements.pitchStatus.textContent = "Scanning the desk…";
+  try {
+    const response = await fetch("/api/pitch/run", { method: "POST" });
+    const result = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    if (result.state) renderPitchState(result.state);
+    showPitchMessage(describeRunResult(result), !response.ok || result.action === "failed");
+  } catch (error) {
+    showPitchMessage(`Scan failed: ${error.message}`, true);
+  } finally {
+    elements.pitchNow.classList.remove("busy");
+    elements.pitchNow.disabled = elements.pitchToggle.disabled || !elements.pitchToggle.checked;
+  }
+});
+elements.pitchToggle.addEventListener("change", async () => {
+  const paused = !elements.pitchToggle.checked;
+  try {
+    const response = await fetch("/api/pitch/pause", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ paused }) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    renderPitchState(await response.json());
+  } catch (error) {
+    elements.pitchToggle.checked = paused;
+    showPitchMessage(`Couldn't update: ${error.message}`, true);
+  }
+});
+
 // ── SSE ──
 function connect() {
   const source = new EventSource("/api/stream");
@@ -238,4 +300,6 @@ function connect() {
   source.onerror = () => { elements.connDot.className = "conn-dot reconnecting"; }; // auto-reconnects
 }
 loadAgentNumber();
+loadPitchState();
+setInterval(loadPitchState, 60_000);
 connect();

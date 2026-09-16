@@ -35,6 +35,15 @@
           </label>
           <span id="agentHint" class="agent-hint"></span>
         </div>
+        <div id="pitchControls" class="pitch-controls" hidden>
+          <button id="pitchNow" class="pitch-now" type="button" title="Scan the desk now and call me if something's worth it">Pitch me now</button>
+          <label class="pitch-switch" title="Allow Jordan to call you">
+            <input id="pitchToggle" type="checkbox" role="switch" checked />
+            <span class="pitch-switch-track" aria-hidden="true"></span>
+            <span class="pitch-switch-label">Calls</span>
+          </label>
+          <span id="pitchStatus" class="pitch-status" aria-live="polite"></span>
+        </div>
         <span class="live-status">
           <span id="callPill" class="call-pill idle">Idle</span>
           <span id="connDot" class="conn-dot reconnecting" title="stream">●</span>

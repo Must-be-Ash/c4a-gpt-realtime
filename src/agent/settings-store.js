@@ -4,6 +4,7 @@
 //
 // activeSipAgent : what answers the Telnyx number ("gpt-realtime-2.1" | "gpt-live-1").
 // selectedAgent  : what the dashboard dropdown shows (the above, or "vapi").
+// pitchPaused    : true stops all outbound pitch calls (dashboard toggle).
 // Selecting an OpenAI agent arms it; selecting Vapi leaves the armed agent alone.
 
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
@@ -29,7 +30,7 @@ export function agentCatalog({ telnyxNumber = "", vapiNumber = "" } = {}) {
 export function createSettingsStore({ dir, defaultSipAgent = DEFAULT_SIP_AGENT }) {
   const filePath = join(dir, "settings.json");
   const fallbackSip = SIP_AGENTS.includes(defaultSipAgent) ? defaultSipAgent : DEFAULT_SIP_AGENT;
-  let state = { activeSipAgent: fallbackSip, selectedAgent: fallbackSip };
+  let state = { activeSipAgent: fallbackSip, selectedAgent: fallbackSip, pitchPaused: false };
 
   const ready = (async () => {
     await mkdir(dir, { recursive: true });
@@ -37,6 +38,7 @@ export function createSettingsStore({ dir, defaultSipAgent = DEFAULT_SIP_AGENT }
       const saved = JSON.parse(await readFile(filePath, "utf8"));
       if (SIP_AGENTS.includes(saved.activeSipAgent)) state.activeSipAgent = saved.activeSipAgent;
       state.selectedAgent = AGENT_IDS.includes(saved.selectedAgent) ? saved.selectedAgent : state.activeSipAgent;
+      state.pitchPaused = saved.pitchPaused === true;
     } catch {
       /* first boot or unreadable file -> defaults */
     }
@@ -58,9 +60,17 @@ export function createSettingsStore({ dir, defaultSipAgent = DEFAULT_SIP_AGENT }
       await ready;
       if (!AGENT_IDS.includes(agentId)) throw Object.assign(new Error(`Unknown agent: ${agentId}`), { status: 400 });
       state = {
+        ...state,
         activeSipAgent: SIP_AGENTS.includes(agentId) ? agentId : state.activeSipAgent,
         selectedAgent: agentId,
       };
+      await persist();
+      return { ...state };
+    },
+    pitchPaused() { return state.pitchPaused; },
+    async setPitchPaused(paused) {
+      await ready;
+      state = { ...state, pitchPaused: paused === true };
       await persist();
       return { ...state };
     },

@@ -1,6 +1,7 @@
 import { OpenAIRealtimeWebRTC, RealtimeAgent, RealtimeSession, tool } from "@openai/agents/realtime";
 import { z } from "zod";
 import { artifactSpecSchema } from "../src/shared/artifact-schema.js";
+import { previewInstruction } from "../src/shared/order-preview.js";
 import { x402RouterParameters } from "../src/services/realtime-tool-schemas.js";
 import { captionWindow } from "./caption-window.js";
 import { classifyPaidFailure, createPaidAttemptTracker } from "./paid-recovery.js";
@@ -350,7 +351,7 @@ function renderPreview(payload) {
     order.limitPrice && `limit $${order.limitPrice}`,
     order.stopPrice && `stop $${order.stopPrice} ${order.stopDirection}`,
     order.equityTradingSession && `session ${order.equityTradingSession.replaceAll("_", " ").toLowerCase()}`,
-    estimate && `estimated fill $${estimate}`,
+    estimate && (payload.preview.estimated ? `estimate ~$${estimate} (live price; Coinbase has no stock preview)` : `estimated fill $${estimate}`),
     fee && `fee $${fee}`,
     liquidationPrice && `estimated liquidation $${liquidationPrice}`,
     `expires ${new Date(payload.expiresAt).toLocaleTimeString()}`,
@@ -814,7 +815,7 @@ const previewOrderTool = tool({
     };
     const payload = await requestJson("/api/orders/preview", { method: "POST", body: JSON.stringify(order) });
     renderPreview(payload);
-    return JSON.stringify({ ...payload, instruction: "Read back the exact preview and ask for confirmation. Stop this turn without executing." });
+    return JSON.stringify({ ...payload, instruction: previewInstruction(payload) });
   },
 });
 

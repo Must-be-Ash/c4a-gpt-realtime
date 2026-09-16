@@ -125,9 +125,21 @@ node scripts/tune-vapi.mjs
 
 The full step-by-step, including diagnostics, is in the two hosted skills.
 
+### Outbound pitch calls ("Jordan")
+
+Optional, on top of the Vapi path: the agent calls **you**. A scheduler on the Fly machine watches a research desk's fresh long positions (read-only Postgres, `DESK_DATABASE_URL`). When an idea is still intact at today's price, is tradable on Coinbase within your cap, and isn't contradicted by the last 48 hours of news (Exa, judged by `OPENAI_SUMMARY_MODEL`), it writes a grounded brief and phones you. "Jordan", a Wolf-of-Wall-Street-style closer on an ElevenLabs voice, pitches it with the trend, the catalyst, the stop, and a suggested size. Say "not interested" or "buy 2 shares". No real signal means no call.
+
+- **Number:** free Vapi numbers can't dial out. Buy a second Telnyx number, import it into Vapi, and attach Vapi's Telnyx connection to an outbound voice profile. Your inbound numbers stay unchanged, and calling the pitch number back reaches Jordan with the latest unresolved pitch (allowlisted callers only).
+- **Voice:** add your ElevenLabs key in Vapi → Integrations → Voice Providers. Before each call the server checks your ElevenLabs credits and starts in the built-in Vapi voice (`PITCH_FALLBACK_VOICE`) if they're low; Vapi's voice fallback also covers mid-call failures.
+- **Setup:** set the `ENABLE_PITCH_CALLS` block in `.env.example`, then `node scripts/configure-vapi-pitch.mjs` (creates the assistant and routes the pitch number through `/vapi/webhook`). Try `PITCH_DRY_RUN=1` first: the whole pipeline runs and the brief shows on the dashboard, but nothing is dialed.
+- **Limits:** weekdays 9:30–16:00 ET, `PITCH_MAX_CALLS_PER_DAY` (3), `PITCH_MIN_SPACING_MIN` (60), each desk position pitched once, long only. The dashboard has **Pitch me now** and a **Calls** on/off switch.
+- **Safety:** every number Jordan says is computed in code or found in the sources; a grounding check rejects anything else. Orders on a pitch call are limited server-side to buys of the pitched product up to `PITCH_MAX_ORDER_USD` (500), checked at preview *and* execute, on top of the usual read-back and spoken confirmation. Coinbase has no API preview for stocks, so stock previews are estimates at the live price.
+
+The design and build checklist is in [`docs/specs/wolf-pitch-calls.md`](docs/specs/wolf-pitch-calls.md).
+
 ### Costs
 
-Fly machine + the phone provider (Vapi per-minute, or Telnyx number + per-minute) + OpenAI (realtime tokens, or gpt-live-1 at $0.05/min plus backend tokens) + any AgentCash paid data.
+Fly machine + the phone provider (Vapi per-minute, or Telnyx number + per-minute) + OpenAI (realtime tokens, or gpt-live-1 at $0.05/min plus backend tokens) + any AgentCash paid data. Pitch calls add a second Telnyx number, ElevenLabs characters, and an Exa search plus two small model calls per idea that reaches the news check (skips are cached for an hour).
 
 ## Checks
 

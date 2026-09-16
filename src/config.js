@@ -48,6 +48,28 @@ export const config = {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean),
+  // Outbound pitch calls ("Jordan"). See docs/specs/wolf-pitch-calls.md.
+  pitch: {
+    enabled: /^(1|true|yes)$/i.test(process.env.ENABLE_PITCH_CALLS ?? ""),
+    dryRun: /^(1|true|yes)$/i.test(process.env.PITCH_DRY_RUN ?? ""),
+    deskDatabaseUrl: process.env.DESK_DATABASE_URL ?? "",
+    vapiApiKey: process.env.VAPI_PRIVATE_KEY ?? "",
+    assistantId: process.env.VAPI_PITCH_ASSISTANT_ID ?? "",
+    phoneNumberId: process.env.VAPI_PITCH_PHONE_NUMBER_ID ?? "",
+    phoneNumber: process.env.PITCH_PHONE_NUMBER ?? "",
+    callTo: process.env.PITCH_CALL_TO || (process.env.PHONE_NUMBER ?? "").split(",")[0].trim(),
+    elevenLabsApiKey: process.env.ELEVENLABS_API_KEY ?? "",
+    voiceId: process.env.ELEVENLABS_VOICE_ID ?? "Ifu36BnEjjIY932etsqk",
+    fallbackVoice: process.env.PITCH_FALLBACK_VOICE ?? "Godfrey",
+    maxOrderUsd: Number(process.env.PITCH_MAX_ORDER_USD ?? 500) || 500,
+    maxCallsPerDay: integer(process.env.PITCH_MAX_CALLS_PER_DAY, 3),
+    minSpacingMin: integer(process.env.PITCH_MIN_SPACING_MIN, 60),
+    minConviction: integer(process.env.PITCH_MIN_CONVICTION, 7),
+    maxIdeaAgeHours: Number(process.env.PITCH_MAX_IDEA_AGE_HOURS ?? 6) || 6,
+    minRewardRisk: Number(process.env.PITCH_MIN_REWARD_RISK ?? 1.5) || 1.5,
+    scanIntervalMin: integer(process.env.PITCH_SCAN_INTERVAL_MIN, 10),
+    llmModel: process.env.PITCH_LLM_MODEL ?? "gpt-4.1",
+  },
 };
 
 export const publicConfig = () => ({

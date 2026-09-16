@@ -215,7 +215,7 @@ export function describeInsufficientFunds(order, balances) {
   return `Coinbase rejected the ${order.productId} ${order.side} preview for insufficient funds.${suffix}`;
 }
 
-const runCoinbase = (args, { env = process.env, timeoutMs = 30_000 } = {}) =>
+export const runCoinbase = (args, { env = process.env, timeoutMs = 30_000 } = {}) =>
   new Promise((resolve, reject) => {
     const child = spawn(coinbaseCommand.command, [...coinbaseCommand.args, ...args], {
       env: { ...env, COINBASE_ENV: env.COINBASE_ENV || "live", COINBASE_NO_HISTORY: "1" },

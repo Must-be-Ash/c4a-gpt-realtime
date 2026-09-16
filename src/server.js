@@ -44,6 +44,14 @@ import {
 } from "./services/agentcash-mcp.js";
 import { createOrthogonalDiscoveryClient } from "./services/orthogonal.js";
 import { createRuntimeLogger } from "./services/runtime-log.js";
+import { createMarketData } from "./pitch/market-data.js";
+import { createDeskSource } from "./pitch/desk-source.js";
+import { createNewsCheck } from "./pitch/news-check.js";
+import { createPitchStore } from "./pitch/pitch-store.js";
+import { createPitchScheduler } from "./pitch/scheduler.js";
+import { createPitchDialer } from "./pitch/vapi-outbound.js";
+import { createPitchToolRunners, PITCH_TOOL_NAMES } from "./pitch/tools.js";
+import { equityPreviewEstimate, estimateNotionalUsd, isEquityPreviewUnavailable, pitchGuardViolation } from "./pitch/order-guard.js";
 import { buildToolRegistry } from "./agent/tools.js";
 import { createVapiWebhook } from "./agent/vapi-webhook.js";
 import { createEventBus } from "./agent/event-bus.js";
@@ -70,6 +78,7 @@ const agentCash = createAgentCashMcpClient();
 const orthogonal = createOrthogonalDiscoveryClient({ apiKey: config.orthogonalApiKey });
 const sponge = createSpongeMcpClient({ apiKey: config.spongeApiKey });
 const runtimeLogger = createRuntimeLogger({ filePath: runtimeLogPath });
+const marketData = createMarketData();
 
 const summarizeBalances = (payload) => ({
   balances: (payload?.accounts ?? []).map((account) => ({
@@ -185,6 +194,21 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
     callStore.record(event).catch(() => { /* history is best-effort */ });
   };
 
+  // A call counts as live while its events keep arriving; a lost end-of-call
+  // report must not block outbound pitches forever.
+  const lastCallEventAt = new Map();
+  eventBus.subscribe((event) => { if (event.callId) lastCallEventAt.set(event.callId, Date.now()); });
+  const isCallActive = () => {
+    const id = eventBus.currentCallId;
+    return Boolean(id) && Date.now() - (lastCallEventAt.get(id) ?? 0) < 15 * 60_000;
+  };
+
+  // ── Outbound pitch calls ("Jordan"). The webhook side is on whenever the pitch
+  //    assistant and number are configured (so callbacks work); the scheduler
+  //    only runs with ENABLE_PITCH_CALLS. ──
+  const pitchConfigured = Boolean(config.enableWebPhone && config.pitch.assistantId && config.pitch.phoneNumberId);
+  const pitchStore = createPitchStore({ dir: join(root, "runtime") });
+
   // ── Phone transport A: Vapi (managed OpenAI Realtime; limited to Vapi's model list) ──
   if (config.enableWebPhone) {
     app.post(
@@ -197,6 +221,16 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
         assistantId: config.vapiAgentId,
         emit: emitEvent,
         onCallEnd: (report) => callStore.finalize(report).catch(() => {}),
+        pitch: pitchConfigured
+          ? {
+            phoneNumberId: config.pitch.phoneNumberId,
+            assistantId: config.pitch.assistantId,
+            store: pitchStore,
+            runners: createPitchToolRunners({ store: pitchStore }),
+            toolNames: PITCH_TOOL_NAMES,
+            maxOrderUsd: config.pitch.maxOrderUsd,
+          }
+          : null,
       }),
     );
   }
@@ -217,6 +251,56 @@ if (config.enableWebPhone || config.enableOpenAiSip) {
       response.status(error.status || 500).json({ error: error.message });
     }
   }));
+
+  // ── Pitch scheduler + dashboard controls ──
+  const pitchScheduler = config.pitch.enabled && pitchConfigured
+    ? createPitchScheduler({
+      desk: createDeskSource({ url: config.pitch.deskDatabaseUrl, log: logEvent }),
+      market: marketData,
+      store: pitchStore,
+      checkNews: createNewsCheck({ exaApiKey: config.exaApiKey, openAiApiKey: config.openAiApiKey, model: config.summaryModel }),
+      dial: createPitchDialer({ settings: config.pitch }),
+      getBalances: () => trader.balance(),
+      settings: config.pitch,
+      openAi: { apiKey: config.openAiApiKey, model: config.summaryModel },
+      isPaused: () => settings.pitchPaused(),
+      isCallActive,
+      emit: emitEvent,
+      log: logEvent,
+    })
+    : null;
+  const pitchState = async () => ({
+    enabled: Boolean(pitchScheduler),
+    dryRun: config.pitch.dryRun,
+    paused: settings.pitchPaused(),
+    pitchNumber: config.pitch.phoneNumber || null,
+    maxCallsPerDay: config.pitch.maxCallsPerDay,
+    maxOrderUsd: config.pitch.maxOrderUsd,
+    ...(await pitchStore.dialState()),
+    lastRun: pitchScheduler?.lastRun ?? null,
+    nextScanAt: pitchScheduler?.nextScanAt() ?? null,
+    recent: (await pitchStore.list({ limit: 5 })).map(({ id, symbol, asset, status, calledAt, createdAt, outcome, voice }) => ({ id, symbol, asset, status, calledAt, createdAt, outcome, voice })),
+  });
+  app.get("/api/pitch/state", asyncRoute(async (_request, response) => response.json(await pitchState())));
+  app.post("/api/pitch/pause", express.json({ limit: "1kb" }), asyncRoute(async (request, response) => {
+    await settings.setPitchPaused(request.body?.paused === true);
+    logEvent("pitch.paused", { paused: settings.pitchPaused() });
+    response.json(await pitchState());
+  }));
+  app.post("/api/pitch/run", asyncRoute(async (_request, response) => {
+    if (!pitchScheduler) {
+      response.status(409).json({ error: "Pitch calls are off (set ENABLE_PITCH_CALLS=1 and the VAPI_PITCH_* settings)." });
+      return;
+    }
+    const result = await pitchScheduler.runOnce({ manual: true });
+    logEvent("pitch.run.manual", { action: result.action, symbol: result.symbol ?? null, reasons: result.reasons ?? [] });
+    const { vapi: _vapi, ...summary } = result;
+    response.json({ ...summary, state: await pitchState() });
+  }));
+  if (pitchScheduler) {
+    settings.ready.then(() => pitchScheduler.start());
+    logEvent("pitch.enabled", { dryRun: config.pitch.dryRun, maxCallsPerDay: config.pitch.maxCallsPerDay, maxOrderUsd: config.pitch.maxOrderUsd });
+  }
 
   // ── Phone transport B: OpenAI over SIP (direct). Two agents share the Telnyx
   //    number: gpt-realtime-2.1 (Realtime API) and gpt-live-1 (GPT-Live API). ──
@@ -820,7 +904,10 @@ app.post("/api/orders/preview", asyncRoute(async (request, response) => {
     order: requestedOrder,
     requestedQuoteSize,
     baseIncrement,
-  } = await prepareOrderForPreview(request.body ?? {}, { getProduct });
+  } = await prepareOrderForPreview(request.body ?? {}, {
+    // The public market API 404s on stocks; the authenticated CLI knows them.
+    getProduct: (id) => getProduct(id).catch(async (error) => (await marketData.coinbaseProduct(id)) ?? Promise.reject(error)),
+  });
   logEvent("order.preview.requested", {
     productId: requestedOrder.productId,
     side: requestedOrder.side,
@@ -831,18 +918,47 @@ app.post("/api/orders/preview", asyncRoute(async (request, response) => {
     baseSize: requestedOrder.baseSize ?? null,
     baseIncrement,
   });
+  const pitchGuard = request.body?.pitchGuard
+    ? { maxUsd: Number(request.body.pitchGuard.maxUsd), productId: String(request.body.pitchGuard.productId ?? "") }
+    : null;
   let preview;
   try {
     preview = await trader.preview(requestedOrder);
   } catch (error) {
-    if (!/insufficient fund/i.test(error.message)) throw error;
-    const balances = await trader.balance().catch(() => null);
-    const enriched = new Error(describeInsufficientFunds(requestedOrder, balances), { cause: error });
-    enriched.status = 400;
-    throw enriched;
+    if (isEquityPreviewUnavailable(error)) {
+      // Coinbase has no API preview for stocks; estimate at the live price.
+      const ticker = requestedOrder.productId.replace(/-(USD|USDC)$/, "");
+      const quote = await marketData.quote({ source: "yahoo", symbol: ticker });
+      preview = { order: requestedOrder, result: equityPreviewEstimate(requestedOrder, quote?.price) };
+      logEvent("order.preview.estimated", { productId: requestedOrder.productId, price: quote?.price ?? null });
+    } else if (/insufficient fund/i.test(error.message)) {
+      const balances = await trader.balance().catch(() => null);
+      const enriched = new Error(describeInsufficientFunds(requestedOrder, balances), { cause: error });
+      enriched.status = 400;
+      throw enriched;
+    } else {
+      throw error;
+    }
   }
   const { order, result } = preview;
-  const item = previews.create({ ...order, clientOrderId: randomUUID() }, result);
+  let guard = null;
+  if (pitchGuard) {
+    const isFuture = order.productId.endsWith("-CDE");
+    const contract = isFuture ? (await marketData.futuresList()).find((p) => p.product_id === order.productId) : null;
+    const notionalUsd = estimateNotionalUsd(order, result, {
+      price: contract ? Number(contract.price) : null,
+      contractSize: contract ? Number(contract.future_product_details?.contract_size) : null,
+    });
+    const violation = pitchGuardViolation(pitchGuard, order, notionalUsd);
+    logEvent("order.preview.pitch_guard", { productId: order.productId, notionalUsd, maxUsd: pitchGuard.maxUsd, violation });
+    if (violation) {
+      const blocked = new Error(violation);
+      blocked.status = 400;
+      throw blocked;
+    }
+    guard = { ...pitchGuard, notionalUsd };
+  }
+  const item = previews.create({ ...order, clientOrderId: randomUUID(), ...(guard ? { pitchGuard: guard } : {}) }, result);
   logEvent("order.preview.created", { previewId: item.id, productId: order.productId, side: order.side });
   response.json({
     previewId: item.id,
@@ -856,6 +972,17 @@ app.post("/api/orders/preview", asyncRoute(async (request, response) => {
 app.post("/api/orders/execute", asyncRoute(async (request, response) => {
   const previewId = String(request.body?.previewId ?? "");
   const item = previews.claim(previewId);
+  // Pitch calls may only execute pitch-guarded previews, and the guard is
+  // re-checked against the stored preview before anything reaches Coinbase.
+  const guardError = request.body?.pitchGuard && !item.order.pitchGuard
+    ? "This line can only execute orders previewed for the pitched trade."
+    : pitchGuardViolation(item.order.pitchGuard, item.order, item.order.pitchGuard?.notionalUsd);
+  if (guardError) {
+    previews.release(previewId);
+    const blocked = new Error(guardError);
+    blocked.status = 400;
+    throw blocked;
+  }
   logEvent("order.execution.requested", {
     previewId,
     productId: item.order.productId,

@@ -10,6 +10,7 @@
 
 import { artifactSpecSchema } from "../shared/artifact-schema.js";
 import { x402RouterParameters } from "../services/realtime-tool-schemas.js";
+import { previewInstruction } from "../shared/order-preview.js";
 
 // ── JSON Schema fragments (mirror the zod schemas in public/app.js) ──
 const cryptoProductId = {
@@ -214,7 +215,7 @@ const STATIC_TOOLS = [
   },
   {
     name: "preview_order",
-    description: "Get a real Coinbase preview for a spot, equity, or futures order, then read it back and ask for explicit spoken confirmation before executing. amountType 'quote' for dollars/USDC, 'base' for shares/contracts/base units (futures always base). The server quantizes to Coinbase's live increment.",
+    description: "Get a Coinbase preview for a spot, equity, or futures order (stock previews are an estimate at the live price because Coinbase has no stock preview yet), then read it back and ask for explicit spoken confirmation before executing. amountType 'quote' for dollars/USDC, 'base' for shares/contracts/base units (futures always base). The server quantizes to Coinbase's live increment.",
     parameters: obj({
       productId: orderProductId,
       side: { type: "string", enum: ["BUY", "SELL"] },
@@ -227,9 +228,11 @@ const STATIC_TOOLS = [
       equityTradingSession: { type: ["string", "null"], enum: ["PRE_MARKET", "AFTER_HOURS", "OVERNIGHT", "MULTI_SESSION"] },
     }, ["productId", "side", "type", "amount", "amountType"]),
     async run(args, ctx, { call }) {
-      const payload = await call("/api/orders/preview", { method: "POST", body: buildOrderBody(args) });
+      // Pitch calls carry a server-side guard from call context (never from args).
+      const body = { ...buildOrderBody(args), ...(ctx.pitchGuard ? { pitchGuard: ctx.pitchGuard } : {}) };
+      const payload = await call("/api/orders/preview", { method: "POST", body });
       ctx.emit?.({ kind: "preview", title: "Order preview", data: payload });
-      return JSON.stringify({ ...payload, instruction: "Read back the exact preview and ask for spoken confirmation. Do not execute this turn." });
+      return JSON.stringify({ ...payload, instruction: `${previewInstruction(payload)} Ask out loud and wait for the spoken confirmation.` });
     },
   },
   {
@@ -237,7 +240,7 @@ const STATIC_TOOLS = [
     description: "Execute the exact pending Coinbase preview only after the user's newest utterance explicitly confirms it.",
     parameters: obj({ previewId: { type: "string", description: "The previewId returned by preview_order." } }, ["previewId"]),
     async run(args, ctx, { call }) {
-      const payload = await call("/api/orders/execute", { method: "POST", body: { previewId: args.previewId } });
+      const payload = await call("/api/orders/execute", { method: "POST", body: { previewId: args.previewId, ...(ctx.pitchGuard ? { pitchGuard: true } : {}) } });
       ctx.emit?.({ kind: "execution", title: "Order executed", data: payload });
       return JSON.stringify(payload);
     },

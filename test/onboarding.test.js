@@ -28,7 +28,7 @@ test("landing page offers the agent-guided setup prompt", async () => {
   assert.ok(page.indexOf('class="prompt-block"') < page.indexOf('class="demo-frame"'));
   assert.match(page, /Paste this into Codex, Claude Code, Cursor/);
   assert.match(page, /Markets move fast\./);
-  assert.match(page, /class="hero-accent">Your research should too\.<\/span>/);
+  assert.match(page, /class="hero-accent">Your trades should too\.<\/span>/);
   assert.match(page, /Voice-first agent that helps you research and make better informed trades at the speed of thought/);
   assert.doesNotMatch(page, /—|–/);
   assert.doesNotMatch(page, /Your market|voice-first crypto research/);

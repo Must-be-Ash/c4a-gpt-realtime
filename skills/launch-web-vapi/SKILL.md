@@ -135,6 +135,18 @@ The chart should appear on the dashboard within a second and captions should pas
 
 Diagnostics: `fly logs -a <app>`; per-call event streams are in `/app/runtime/calls/` on the volume (`fly ssh console -a <app> -C "ls /app/runtime/calls"`).
 
+## 8b. Optional: outbound pitch calls ("Jordan")
+
+Only if the user asks for the agent to call them with trade ideas. It needs an idea source: a Postgres database with the research desk's `ledger`, `theses`, and `identity` tables, reached through a SELECT-only role. Create that role with SQL (`CREATE ROLE … LOGIN`, `default_transaction_read_only = on`, `GRANT SELECT` on those three tables only). On Neon, don't use the console/API for this, because those roles join `neon_superuser`.
+
+1. The user buys a second Telnyx voice number and leaves it unassigned. Free Vapi numbers can't dial out.
+2. Import it into Vapi (`POST /credential` with `provider: telnyx` and their Telnyx API key, then `POST /phone-number` with `provider: telnyx`). Attach the "Vapi" call-control app that Vapi creates in Telnyx to an outbound voice profile that allows the user's country.
+3. The user adds their ElevenLabs `sk_` key in Vapi → Integrations → Voice Providers.
+4. Put the pitch block from `.env.example` in `.env` (`DESK_DATABASE_URL`, `VAPI_PITCH_PHONE_NUMBER_ID`, `PITCH_PHONE_NUMBER`, `ELEVENLABS_*`) and run `node scripts/configure-vapi-pitch.mjs`. Save the printed `VAPI_PITCH_ASSISTANT_ID`.
+5. Set those as Fly secrets with `ENABLE_PITCH_CALLS=1` and `PITCH_DRY_RUN=1`, deploy, and check `/app/runtime/events.jsonl` for `pitch.dry_run`. Then unset `PITCH_DRY_RUN`.
+
+With the user's go-ahead, smoke test with one outbound call. Never place an order during setup.
+
 ## 9. Finish cleanly
 
 `npm run check` after any source change. Confirm `.env`, `runtime/`, wallets, and credentials are not in `git status`. If a fork was created and source changed, summarize the non-secret diff and ask before committing.
