@@ -42,5 +42,17 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/dashboard",
+      "destination": "https://coinbase-for-agents-phone.fly.dev/dashboard",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard/:path*",
+      "destination": "https://coinbase-for-agents-phone.fly.dev/dashboard/:path*",
+      "permanent": false
+    }
   ]
 }
