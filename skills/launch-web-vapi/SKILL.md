@@ -92,7 +92,7 @@ State the app name and region, get confirmation, then:
     fly secrets import -a <app> < .env
     fly deploy --remote-only --ha=false -a <app>
 
-`fly.toml` already sets one always-on machine (`min_machines_running = 1`, no auto-stop) so the webhook never cold-starts. If the repo's `fly.toml` has a different `app` name, pass `-a <app>` on every command rather than editing it, or update it in the fork and commit.
+`fly.toml` lets the machine auto-stop when idle (`auto_stop_machines = "stop"`, `min_machines_running = 0`) to keep costs down; a call or dashboard visit wakes it, so the first request after idle cold-starts for a few seconds and scheduled pitches only run while it is awake. For an always-on machine set `auto_stop_machines = "off"` and `min_machines_running = 1`. If the repo's `fly.toml` has a different `app` name, pass `-a <app>` on every command rather than editing it, or update it in the fork and commit.
 
 Verify:
 
